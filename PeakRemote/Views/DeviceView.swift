@@ -3,6 +3,7 @@ import UIKit
 
 struct DeviceView: View {
     @EnvironmentObject private var c: PuffcoController
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage("useCelsius") private var useCelsius = false
     @State private var editingProfile: HeatProfile?
     @State private var brightness: Double = 128
@@ -12,18 +13,44 @@ struct DeviceView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                if !ready { PhaseBanner(phase: c.phase) }
+            Group {
+                if sizeClass == .regular {
+                    // iPad: dial and heat controls on the left, everything else on the right.
+                    VStack(spacing: 20) {
+                        if !ready { PhaseBanner(phase: c.phase) }
+                        HStack(alignment: .top, spacing: 24) {
+                            VStack(spacing: 24) {
+                                TemperatureDial(status: c.status, celsius: useCelsius, size: 340)
+                                    .opacity(ready ? 1 : 0.4)
+                                controls
+                            }
+                            .frame(maxWidth: .infinity)
+                            VStack(spacing: 20) {
+                                profiles
+                                lights
+                                info
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: 1100)
+                } else {
+                    VStack(spacing: 20) {
+                        if !ready { PhaseBanner(phase: c.phase) }
 
-                TemperatureDial(status: c.status, celsius: useCelsius)
-                    .opacity(ready ? 1 : 0.4)
+                        TemperatureDial(status: c.status, celsius: useCelsius)
+                            .opacity(ready ? 1 : 0.4)
 
-                controls
-                profiles
-                lights
-                info
+                        controls
+                        profiles
+                        lights
+                        info
+                    }
+                    .frame(maxWidth: 600)
+                }
             }
             .padding()
+            .frame(maxWidth: .infinity)
         }
         .navigationTitle(c.status.deviceName ?? c.connectedName ?? "Peak")
         .navigationBarTitleDisplayMode(.inline)
@@ -161,6 +188,9 @@ struct DeviceView: View {
 struct TemperatureDial: View {
     let status: DeviceStatus
     let celsius: Bool
+    var size: CGFloat = 250
+
+    private var scale: CGFloat { size / 250 }
 
     private var progress: Double {
         guard let t = status.tempC else { return 0 }
@@ -177,12 +207,12 @@ struct TemperatureDial: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: 18)
+                .stroke(Color.white.opacity(0.08), lineWidth: 18 * scale)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
                     AngularGradient(colors: [.yellow, .orange, .red, .yellow], center: .center),
-                    style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                    style: StrokeStyle(lineWidth: 18 * scale, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
                 .animation(.easeInOut(duration: 0.6), value: progress)
@@ -193,7 +223,7 @@ struct TemperatureDial: View {
                     .tracking(1.5)
                     .foregroundStyle(stateColor)
                 Text(Temp.format(status.tempC, celsius: celsius))
-                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .font(.system(size: 64 * scale, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText())
                     .animation(.default, value: status.tempC)
@@ -209,7 +239,7 @@ struct TemperatureDial: View {
                 }
             }
         }
-        .frame(width: 250, height: 250)
+        .frame(width: size, height: size)
         .padding(.vertical, 8)
     }
 }
