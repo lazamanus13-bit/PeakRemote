@@ -41,6 +41,11 @@ final class PuffcoController: NSObject, ObservableObject {
     private var gotAnyReply = false
     /// Firmware and model come from the Lorax file system; read them once per connection.
     private var readDeviceInfo = false
+    /// Color file format this Peak uses, learned from its existing color files.
+    private var colorFormat: PeakColorFormat?
+    /// Latest live-preview color waiting to be sent (outer nil = nothing pending, inner nil = clear).
+    private var pendingPreview: RGB??
+    private var previewTask: Task<Void, Never>?
 
     private var nextSeq: UInt16 = 0xFFFF
     private var pendingReplies: [UInt16: CheckedContinuation<Lorax.Reply, Error>] = [:]
@@ -120,6 +125,10 @@ final class PuffcoController: NSObject, ObservableObject {
         gotAnyReply = false
         nextSeq = 0xFFFF
         readDeviceInfo = false
+        colorFormat = nil
+        pendingPreview = nil
+        previewTask?.cancel()
+        previewTask = nil
         unsupportedPaths = []
         failPending(PuffcoError.notConnected)
     }
@@ -519,6 +528,10 @@ final class PuffcoController: NSObject, ObservableObject {
                     profile.intensity = Decode.finiteFloat(b)
                 }
                 if let b = try await readAll(LoraxPath.profileColor(slot)) {
+                    if colorFormat == nil, let f = PeakColorFormat.detect(b) {
+                        colorFormat = f
+                        appendLog("Color format: \(f)")
+                    }
                     if verbose || slot == 0 { appendLog("Profile \(slot + 1) color file: \(Array(b.prefix(48)).hex)") }
                     if let c = PeakColor.firstColor(in: b) { profile.color = RGB(r: c.0, g: c.1, b: c.2) }
                 }
@@ -577,7 +590,7 @@ final class PuffcoController: NSObject, ObservableObject {
                 try await c.writePath(LoraxPath.profileBoostTime(slot), Encode.float32(Float(t.rounded())))
             }
             if let color = edit.color, color != profile.color {
-                try await c.writeAll(LoraxPath.profileColor(slot), PeakColor.solidPayload(r: color.r, g: color.g, b: color.b))
+                try await c.writeColor(LoraxPath.profileColor(slot), color)
             }
             await c.refreshProfiles()
         }
@@ -595,10 +608,54 @@ final class PuffcoController: NSObject, ObservableObject {
 
     func setLanternColor(_ color: RGB) {
         perform("Lantern color") { c in
-            if try await c.writeAll(LoraxPath.lanternColor, PeakColor.solidPayload(r: color.r, g: color.g, b: color.b)) {
+            if try await c.writeColor(LoraxPath.lanternColor, color) {
                 c.status.lanternColor = color
             }
         }
+    }
+
+    /// Writes a solid color in whichever format this Peak uses (8-byte by default).
+    @discardableResult
+    private func writeColor(_ path: String, _ color: RGB) async throws -> Bool {
+        let format = colorFormat ?? .api2
+        let bytes = PeakColor.payload(color, format: format)
+        if format == .api2 {
+            return try await writePath(path, bytes)
+        } else {
+            return try await writeAll(path, bytes)
+        }
+    }
+
+    /// Shows a color on the Peak while the user is choosing it; nil ends the preview.
+    /// Sends at most ~8 updates a second and always delivers the latest one.
+    func preview(_ color: RGB?) {
+        guard phase == .ready else { return }
+        pendingPreview = .some(color)
+        guard previewTask == nil else { return }
+        previewTask = Task { [weak self] in
+            while let strong = self, let next = strong.pendingPreview {
+                strong.pendingPreview = nil
+                do {
+                    try await strong.sendPreview(next)
+                } catch {
+                    strong.appendLog("Preview failed: \(error.localizedDescription)")
+                }
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
+            self?.previewTask = nil
+        }
+    }
+
+    private func sendPreview(_ color: RGB?) async throws {
+        let format = colorFormat ?? .api2
+        let bytes: [UInt8]
+        if let color {
+            bytes = PeakColor.payload(color, format: format)
+        } else {
+            bytes = format == .api2 ? PeakColor.api2None : [0xF6] // CBOR null
+        }
+        let reply = try await send(.writeShort, body: Lorax.writeShortBody(path: LoraxPath.previewColor, value: bytes))
+        if reply.status != 0 { appendLog("Preview write status \(reply.status)") }
     }
 
     func setStealth(_ on: Bool) {

@@ -8,6 +8,7 @@ struct DeviceView: View {
     @State private var editingProfile: HeatProfile?
     @State private var brightness: Double = 128
     @State private var lanternColor: Color = .orange
+    @State private var lanternCommit: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
     @State private var showFirmwareHelp = false
     @State private var showLog = false
@@ -76,9 +77,12 @@ struct DeviceView: View {
             }
         }
         .sheet(item: $editingProfile) { profile in
-            ProfileEditView(profile: profile, celsius: useCelsius) { edit in
-                c.saveProfile(slot: profile.slot, edit: edit)
-            }
+            ProfileEditView(
+                profile: profile,
+                celsius: useCelsius,
+                onSave: { edit in c.saveProfile(slot: profile.slot, edit: edit) },
+                onPreview: { color in c.preview(color) }
+            )
         }
         .sheet(isPresented: $showLog) {
             NavigationView { LogView() }
@@ -165,11 +169,22 @@ struct DeviceView: View {
                 get: { c.status.lantern },
                 set: { c.setLantern($0) }
             ))
-            HStack {
-                ColorPicker("Lantern color", selection: $lanternColor, supportsOpacity: false)
-                Button("Set") { c.setLanternColor(RGB(lanternColor)) }
-                    .buttonStyle(.bordered)
-            }
+            ColorPicker("Lantern color", selection: Binding(
+                get: { lanternColor },
+                set: { newColor in
+                    lanternColor = newColor
+                    let rgb = RGB(newColor)
+                    c.preview(rgb)
+                    // Save once the user stops changing it, then end the preview.
+                    lanternCommit?.cancel()
+                    lanternCommit = Task {
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        guard !Task.isCancelled else { return }
+                        c.setLanternColor(rgb)
+                        c.preview(nil)
+                    }
+                }
+            ), supportsOpacity: false)
             if c.status.lantern, let left = c.status.lanternRemainingS, left > 0 {
                 InfoRow(label: "Lantern time left", value: Fmt.duration(left))
             }

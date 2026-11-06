@@ -5,6 +5,8 @@ struct ProfileEditView: View {
     let profile: HeatProfile
     let celsius: Bool
     let onSave: (ProfileEdit) -> Void
+    /// Shows the color on the Peak while choosing; nil ends the preview.
+    let onPreview: (RGB?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var tempF: Double
@@ -20,10 +22,13 @@ struct ProfileEditView: View {
     static let boostRangeF: ClosedRange<Double> = 1...36
     static let boostTimeRange: ClosedRange<Double> = 1...60
 
-    init(profile: HeatProfile, celsius: Bool, onSave: @escaping (ProfileEdit) -> Void) {
+    init(profile: HeatProfile, celsius: Bool,
+         onSave: @escaping (ProfileEdit) -> Void,
+         onPreview: @escaping (RGB?) -> Void) {
         self.profile = profile
         self.celsius = celsius
         self.onSave = onSave
+        self.onPreview = onPreview
         func clamp(_ v: Double, _ r: ClosedRange<Double>) -> Double { min(max(v, r.lowerBound), r.upperBound) }
         let f = profile.tempC.map { Temp.f(fromC: $0) } ?? 500
         _tempF = State(initialValue: clamp(f.rounded(), Self.tempRangeF))
@@ -63,8 +68,15 @@ struct ProfileEditView: View {
                 Section("Color") {
                     ColorPicker("Profile color", selection: Binding(
                         get: { color },
-                        set: { color = $0; colorChanged = true }
+                        set: {
+                            color = $0
+                            colorChanged = true
+                            onPreview(RGB($0))
+                        }
                     ), supportsOpacity: false)
+                    Text("Your Peak shows the color live while you choose.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if let intensity = profile.intensity {
                     Section("Vapor intensity") {
@@ -98,6 +110,7 @@ struct ProfileEditView: View {
             }
         }
         .navigationViewStyle(.stack)
+        .onDisappear { onPreview(nil) }
     }
 }
 

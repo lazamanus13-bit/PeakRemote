@@ -128,7 +128,8 @@ enum LoraxPath {
     static let tripHeatTime    = "/p/app/odom/1/tm"
     static let dabsPerDay      = "/p/app/info/dpd"  // float32
     static let dabsRemaining   = "/p/app/info/drem" // float32, on current charge
-    static let lanternColor    = "/p/app/ltrn/colr" // CBOR color file
+    static let lanternColor    = "/p/app/ltrn/colr" // color file
+    static let previewColor    = "/p/app/led/pclr"  // color shown live while editing
     static let lanternTime     = "/p/app/ltrn/time" // float32 s
     static let lanternRemaining = "/p/app/ltrn/remt" // float32 s
 

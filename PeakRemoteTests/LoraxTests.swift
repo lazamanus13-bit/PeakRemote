@@ -119,4 +119,15 @@ final class LoraxTests: XCTestCase {
         // The official app writes 4294967295 into a float32 register for "off".
         XCTAssertEqual(Encode.float32(4_294_967_295).hex, "0000804f")
     }
+
+    func testApi2ColorFormat() {
+        // Matches the official app's RgbtColor.fromRgb / fromNull byte layouts.
+        XCTAssertEqual(PeakColor.api2Solid(r: 0x12, g: 0x34, b: 0x56), [0x12, 0x34, 0x56, 0, 0, 0, 0, 0])
+        XCTAssertEqual(PeakColor.api2None, [0, 0, 0, 255, 0, 0, 0, 0])
+        XCTAssertEqual(PeakColorFormat.detect(PeakColor.api2Solid(r: 1, g: 2, b: 3)), .api2)
+        XCTAssertEqual(PeakColorFormat.detect(PeakColor.solidPayload(r: 1, g: 2, b: 3)), .api3)
+        let c = PeakColor.firstColor(in: [9, 8, 7, 0, 0, 0, 0, 0])
+        XCTAssertEqual(c?.0, 9); XCTAssertEqual(c?.1, 8); XCTAssertEqual(c?.2, 7)
+        XCTAssertNil(PeakColor.firstColor(in: PeakColor.api2None))
+    }
 }

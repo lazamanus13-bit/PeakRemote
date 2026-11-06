@@ -154,8 +154,34 @@ enum Float16Bits {
     }
 }
 
-/// Peak LED color files.
+/// Peak LED color files come in two formats depending on firmware:
+/// - api2: 8 bytes [R, G, B, type, lumaAnim, 0, 0, 0]; type 0 = solid RGB, 255 = no color
+/// - api3: a CBOR document (what PuffcoBLE writes)
+enum PeakColorFormat {
+    case api2
+    case api3
+
+    static func detect(_ bytes: [UInt8]) -> PeakColorFormat? {
+        if bytes.count == 8, [0, 1, 255].contains(bytes[3]) { return .api2 }
+        if case .map? = CBOR.decode(bytes) { return .api3 }
+        return nil
+    }
+}
+
 enum PeakColor {
+    /// Solid color in the 8-byte format (matches the official app's RgbtColor.fromRgb).
+    static func api2Solid(r: UInt8, g: UInt8, b: UInt8) -> [UInt8] { [r, g, b, 0, 0, 0, 0, 0] }
+
+    /// "No color" in the 8-byte format (RgbtColor.fromNull); clears the live preview.
+    static let api2None: [UInt8] = [0, 0, 0, 255, 0, 0, 0, 0]
+
+    static func payload(_ color: RGB, format: PeakColorFormat) -> [UInt8] {
+        switch format {
+        case .api2: return api2Solid(r: color.r, g: color.g, b: color.b)
+        case .api3: return solidPayload(r: color.r, g: color.g, b: color.b)
+        }
+    }
+
     /// The payload the official app and PuffcoBLE use for a single solid color.
     static func solidPayload(r: UInt8, g: UInt8, b: UInt8) -> [UInt8] {
         CBOR.map([
@@ -168,6 +194,9 @@ enum PeakColor {
 
     /// First RGB color found in a color file, if any.
     static func firstColor(in bytes: [UInt8]) -> (UInt8, UInt8, UInt8)? {
+        if PeakColorFormat.detect(bytes) == .api2 {
+            return bytes[3] == 0 ? (bytes[0], bytes[1], bytes[2]) : nil
+        }
         guard let root = CBOR.decode(bytes) else { return nil }
         if case .bytes(let c)? = root.find("color"), c.count >= 3 { return (c[0], c[1], c[2]) }
         if case .array(let arr)? = root.find("color"), case .bytes(let c)? = arr.first, c.count >= 3 {
