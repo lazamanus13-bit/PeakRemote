@@ -6,6 +6,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -34,9 +37,23 @@ jobs:
 
       - name: Package .ipa
         run: |
+          rm -rf Payload PeakRemote.ipa
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/PeakRemote.app Payload/
-          zip -qry PeakRemote.ipa Payload
+          ditto build/Build/Products/Release-iphoneos/PeakRemote.app Payload/PeakRemote.app
+          xattr -cr Payload
+          zip -qr -X PeakRemote.ipa Payload
+          echo "IPA contents:"
+          unzip -l PeakRemote.ipa
+
+      - name: Publish .ipa to Releases (direct download)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest PeakRemote.ipa \
+            --title "Peak Remote (latest build)" \
+            --notes "Built from commit ${GITHUB_SHA::7}. Download PeakRemote.ipa below and drag it into Sideloadly."
 
       - name: Run protocol tests
         continue-on-error: true
