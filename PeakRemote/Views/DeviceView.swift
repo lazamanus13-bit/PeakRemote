@@ -55,10 +55,10 @@ struct DeviceView: View {
         .navigationTitle(c.status.deviceName ?? c.connectedName ?? "Peak")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .navigationBarLeading) {
                 Button("Disconnect") { c.disconnect() }
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 14) {
                     BatteryBadge(percent: c.status.batteryPct, charging: ChargeLabel.isCharging(c.status.chargeRaw))
                     Button { showLog = true } label: { Image(systemName: "ladybug") }
@@ -72,7 +72,8 @@ struct DeviceView: View {
             }
         }
         .sheet(isPresented: $showLog) {
-            NavigationStack { LogView() }
+            NavigationView { LogView() }
+                .navigationViewStyle(.stack)
                 .environmentObject(c)
         }
         .alert("Something went wrong", isPresented: errorBinding) {
@@ -83,7 +84,7 @@ struct DeviceView: View {
         .onAppear {
             if let b = c.status.brightness { brightness = Double(b) }
         }
-        .onChange(of: c.status.brightness) { _, value in
+        .onChange(of: c.status.brightness) { value in
             if let value { brightness = Double(value) }
         }
     }
@@ -225,7 +226,6 @@ struct TemperatureDial: View {
                 Text(Temp.format(status.tempC, celsius: celsius))
                     .font(.system(size: 64 * scale, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .contentTransition(.numericText())
                     .animation(.default, value: status.tempC)
                 if let target = status.targetC {
                     Text("Target \(Temp.format(target, celsius: celsius))")

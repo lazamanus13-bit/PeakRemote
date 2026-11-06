@@ -18,12 +18,13 @@ struct RootView: View {
     @EnvironmentObject private var controller: PuffcoController
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             if controller.phase.isInSession {
                 DeviceView()
             } else {
                 ScanView()
             }
         }
+        .navigationViewStyle(.stack)
     }
 }

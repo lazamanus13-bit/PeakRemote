@@ -560,14 +560,14 @@ final class PuffcoController: NSObject, ObservableObject {
         Task { await runSetup() }
     }
 
-    private func handleValue(_ c: CBCharacteristic, error: Error?) {
-        if let pending = pendingReads.removeValue(forKey: c.uuid) {
-            if let error { pending.resume(throwing: error) } else { pending.resume(returning: c.value ?? Data()) }
+    private func handleValue(uuid: CBUUID, data value: Data?, error: Error?) {
+        if let pending = pendingReads.removeValue(forKey: uuid) {
+            if let error { pending.resume(throwing: error) } else { pending.resume(returning: value ?? Data()) }
             return
         }
-        guard error == nil, let data = c.value else { return }
+        guard error == nil, let data = value else { return }
 
-        switch c.uuid {
+        switch uuid {
         case Lorax.replyUUID:
             handleReply(data)
         case Lorax.modelNumberUUID:
@@ -583,49 +583,56 @@ final class PuffcoController: NSObject, ObservableObject {
 }
 
 // MARK: - CoreBluetooth delegates
-// Callbacks arrive on the main queue (we passed `queue: nil`), so hop onto the main actor synchronously.
+// Callbacks arrive on the main queue (we passed `queue: nil`); each one is forwarded to the main actor.
 
 extension PuffcoController: CBCentralManagerDelegate {
+    nonisolated func onMain(_ work: @escaping @MainActor () -> Void) {
+        Task { @MainActor in work() }
+    }
+
     nonisolated func centralManagerDidUpdateState(_ central: CBCentralManager) {
         let state = central.state
-        MainActor.assumeIsolated { self.handleStateUpdate(state) }
+        onMain { self.handleStateUpdate(state) }
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                                     advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let rssi = RSSI.intValue
-        MainActor.assumeIsolated { self.handleDiscovery(peripheral, advertisement: advertisementData, rssi: rssi) }
+        onMain { self.handleDiscovery(peripheral, advertisement: advertisementData, rssi: rssi) }
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        MainActor.assumeIsolated { self.handleConnected(peripheral) }
+        onMain { self.handleConnected(peripheral) }
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         let message = "Couldn't connect: \(error?.localizedDescription ?? "unknown error")"
-        MainActor.assumeIsolated { self.fail(message) }
+        onMain { self.fail(message) }
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        MainActor.assumeIsolated { self.handleDisconnected(peripheral, error: error) }
+        onMain { self.handleDisconnected(peripheral, error: error) }
     }
 }
 
 extension PuffcoController: CBPeripheralDelegate {
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        MainActor.assumeIsolated { self.handleServices(peripheral, error: error) }
+        onMain { self.handleServices(peripheral, error: error) }
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        MainActor.assumeIsolated { self.handleCharacteristics(peripheral, service: service, error: error) }
+        onMain { self.handleCharacteristics(peripheral, service: service, error: error) }
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        MainActor.assumeIsolated { self.handleNotifyState(characteristic, error: error) }
+        onMain { self.handleNotifyState(characteristic, error: error) }
     }
 
     nonisolated func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        MainActor.assumeIsolated { self.handleValue(characteristic, error: error) }
+        // Copy the value now: CoreBluetooth overwrites it on the next notification.
+        let uuid = characteristic.uuid
+        let value = characteristic.value
+        onMain { self.handleValue(uuid: uuid, data: value, error: error) }
     }
 }
 

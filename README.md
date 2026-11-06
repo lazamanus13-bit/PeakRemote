@@ -18,7 +18,7 @@ The protocol is ported from two MIT-licensed community projects: [puffco-py](htt
 
 ## 1. Build it
 
-You need a Mac with Xcode 15 or newer and an iPhone on iOS 17 or later. The Simulator has no Bluetooth, so you have to use a real phone.
+You need a Mac with Xcode 15 or newer and an iPhone or iPad on iOS 15.4 or later. The Simulator has no Bluetooth, so you have to use a real phone.
 
 ```bash
 brew install xcodegen          # one-time
@@ -48,7 +48,7 @@ First run on a new iPhone:
 2. Delete the generated `ContentView.swift` and `PeakRemoteApp.swift`.
 3. Drag the `PeakRemote/App`, `BLE`, `Model`, `Protocol` and `Views` folders into the project, and replace its `Assets.xcassets` with this one. Check "Copy items if needed."
 4. Target → Info tab: add **Privacy – Bluetooth Always Usage Description** with any text.
-5. Target → General: set Minimum Deployments to **iOS 17.0**.
+5. Target → General: set Minimum Deployments to **iOS 15.4**.
 6. Optional: add a Unit Testing Bundle target and drop in `PeakRemoteTests/LoraxTests.swift`.
 
 ## 2. First connection
@@ -71,7 +71,7 @@ The two source libraries disagree in a few places, and this build hasn't been te
 | Profile duration saves wrong | The firmware stores time as a different type. The app mirrors whatever type it read. | `saveProfile` in `PuffcoController.swift` |
 | "Doesn't expose the Lorax service" | Older pre-Lorax firmware. | Update the Peak's firmware in the Puffco app. |
 
-Open the **debug log** (ladybug icon), tap Share, and paste the log into chat. It shows each step of the handshake and every read and write, which makes most of these quick to fix.
+Open the **debug log** (ladybug icon), tap Copy, and paste the log into chat. It shows each step of the handshake and every read and write, which makes most of these quick to fix.
 
 ## Project layout
 

@@ -61,7 +61,7 @@ struct ScanView: View {
         }
         .navigationTitle("Peak Remote")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button(c.isScanning ? "Stop" : "Scan") {
                     if c.isScanning { c.stopScan() } else { c.startScan() }
                 }

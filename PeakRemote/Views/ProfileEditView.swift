@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ProfileEditView: View {
     let profile: HeatProfile
@@ -23,7 +24,7 @@ struct ProfileEditView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             Form {
                 Section("Temperature") {
                     Text(Temp.format(Temp.c(fromF: tempF), celsius: celsius))
@@ -55,13 +56,14 @@ struct ProfileEditView: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .navigationViewStyle(.stack)
     }
 }
 
 struct LogView: View {
     @EnvironmentObject private var c: PuffcoController
     @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
 
     var body: some View {
         List {
@@ -81,8 +83,11 @@ struct LogView: View {
                 Button("Done") { dismiss() }
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                ShareLink(item: c.log.joined(separator: "\n")) {
-                    Image(systemName: "square.and.arrow.up")
+                Button {
+                    UIPasteboard.general.string = c.log.joined(separator: "\n")
+                    copied = true
+                } label: {
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
                 Button("Clear") { c.clearLog() }
             }
