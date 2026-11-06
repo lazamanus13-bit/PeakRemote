@@ -3,7 +3,7 @@ name: PeakRemote
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
-    iOS: "15.4"
+    iOS: "16.0"
   createIntermediateGroups: true
 
 settings:

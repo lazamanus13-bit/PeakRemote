@@ -51,5 +51,5 @@ jobs:
           - Start / Boost / Stop heat
           - View, select and edit the 4 heat profiles
           - Stealth, lantern and LED brightness
-          - iPhone and iPad, iOS 15.4+ (iOS 15 has a known launch crash)
+          - iPhone and iPad, iOS 16+
           - Debug log (ladybug icon)"
