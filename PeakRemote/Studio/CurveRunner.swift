@@ -49,6 +49,7 @@ final class CurveRunner: ObservableObject {
         let tempBytes: [UInt8]
         let timeBytes: [UInt8]
         let originalActiveSlot: Int?
+        var colorBytes: [UInt8]?
         var touchedOverride = false
     }
 
@@ -126,6 +127,15 @@ final class CurveRunner: ObservableObject {
             }
             guard try await c.setActiveProfileNow(slot) else {
                 return await abort("Couldn't select profile 4 for the curve.")
+            }
+
+            // Optional: show the curve's color while it runs (the old lights come back afterwards).
+            if let color = curve.color {
+                if let old = try await c.readAll(LoraxPath.profileColor(slot)), !old.isEmpty {
+                    backup?.colorBytes = old
+                    _ = try await c.writeColor(LoraxPath.profileColor(slot), color,
+                                               effect: c.colorFormat == .api3 ? nil : curve.effect)
+                }
             }
 
             // 3. Start heating.
@@ -277,6 +287,9 @@ final class CurveRunner: ObservableObject {
         backup = nil
         if b.touchedOverride {
             _ = try? await c.writePath(LoraxPath.tempOverride, Encode.float32(0))
+        }
+        if let colorBytes = b.colorBytes {
+            _ = try? await c.writeAll(LoraxPath.profileColor(b.slot), colorBytes)
         }
         _ = try? await c.writePath(LoraxPath.profileTemp(b.slot), b.tempBytes)
         _ = try? await c.writePath(LoraxPath.profileTime(b.slot), b.timeBytes)

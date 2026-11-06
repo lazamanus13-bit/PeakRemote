@@ -56,7 +56,7 @@ struct ProfileEdit {
 }
 
 /// Brightness animations built into the Peak's firmware (LumaAnimation codes).
-enum LightEffect: UInt8, CaseIterable, Identifiable {
+enum LightEffect: UInt8, CaseIterable, Identifiable, Codable {
     case steady = 1
     case breathing = 5
     case rising = 6
@@ -115,7 +115,7 @@ enum VaporLevel: Double, CaseIterable, Identifiable {
     }
 }
 
-struct RGB: Equatable {
+struct RGB: Equatable, Codable {
     var r: UInt8
     var g: UInt8
     var b: UInt8

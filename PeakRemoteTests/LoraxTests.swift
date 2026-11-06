@@ -205,4 +205,18 @@ final class LoraxTests: XCTestCase {
         // Preset IDs are fixed so edits still match after relaunching
         XCTAssertEqual(HeatCurve.presets[0].id.uuidString, "00000000-0000-0000-0000-00000000C001")
     }
+
+    func testCurveColorSurvivesSaving() throws {
+        var curve = HeatCurve(name: "Colored", points: [CurvePoint(time: 0, tempF: 500), CurvePoint(time: 30, tempF: 480)])
+        curve.color = RGB(r: 10, g: 200, b: 30)
+        curve.effect = .breathing
+        let data = try JSONEncoder().encode([curve])
+        let back = try JSONDecoder().decode([HeatCurve].self, from: data)
+        XCTAssertEqual(back.first?.color, RGB(r: 10, g: 200, b: 30))
+        XCTAssertEqual(back.first?.effect, .breathing)
+        // Curves saved before colors existed still load
+        let old = #"[{"id":"00000000-0000-0000-0000-000000000001","name":"Old","detail":"","isPreset":false,"points":[{"id":"00000000-0000-0000-0000-000000000002","time":0,"tempF":500}]}]"#
+        let legacy = try JSONDecoder().decode([HeatCurve].self, from: Data(old.utf8))
+        XCTAssertNil(legacy.first?.color)
+    }
 }

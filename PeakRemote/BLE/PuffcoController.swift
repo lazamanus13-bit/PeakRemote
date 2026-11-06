@@ -648,7 +648,7 @@ final class PuffcoController: NSObject, ObservableObject {
 
     /// Writes a solid color in whichever format this Peak uses (8-byte by default).
     @discardableResult
-    private func writeColor(_ path: String, _ color: RGB, effect: LightEffect? = nil) async throws -> Bool {
+    func writeColor(_ path: String, _ color: RGB, effect: LightEffect? = nil) async throws -> Bool {
         let format = colorFormat ?? .api2
         let bytes = PeakColor.payload(color, format: format, effect: effect)
         if format == .api2 {

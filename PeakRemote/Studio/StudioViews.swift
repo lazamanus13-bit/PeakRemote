@@ -61,6 +61,9 @@ struct StudioCard: View {
     let liveTempC: Double?
     let celsius: Bool
     let onLock: () -> Void
+    /// Shows a color on the Peak while picking one; nil ends the preview.
+    var onPreview: (PreviewLook?) -> Void = { _ in }
+    var showEffects = true
 
     @State private var custom: [HeatCurve] = CurveStore.load()
     @State private var presetEdits: [HeatCurve] = CurveStore.loadPresetEdits()
@@ -90,7 +93,8 @@ struct StudioCard: View {
             }
         }
         .sheet(item: $editing) { curve in
-            CurveEditorView(curve: curve, celsius: celsius, removeTitle: removeTitle(for: curve), onSave: save, onDelete: delete)
+            CurveEditorView(curve: curve, celsius: celsius, showEffects: showEffects, removeTitle: removeTitle(for: curve),
+                            onSave: save, onDelete: delete, onPreview: onPreview)
         }
     }
 
@@ -142,7 +146,12 @@ struct StudioCard: View {
     private func curveRow(_ curve: HeatCurve) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(curve.name).font(.subheadline.weight(.semibold))
+                HStack(spacing: 6) {
+                    if let color = curve.color {
+                        Circle().fill(color.color).frame(width: 10, height: 10)
+                    }
+                    Text(curve.name).font(.subheadline.weight(.semibold))
+                }
                 Text("\(Int(curve.duration))s · starts \(Temp.format(Temp.c(fromF: curve.startTempF), celsius: celsius))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -208,14 +217,15 @@ struct CurveChart: View {
     let celsius: Bool
 
     private func display(_ f: Double) -> Double { celsius ? Temp.c(fromF: f) : f }
+    private var lineColor: Color { curve.color?.color ?? .orange }
 
     var body: some View {
         Chart {
             ForEach(curve.points.sorted { $0.time < $1.time }) { p in
                 LineMark(x: .value("Time", p.time), y: .value("Temp", display(p.tempF)))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(lineColor)
                 PointMark(x: .value("Time", p.time), y: .value("Temp", display(p.tempF)))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(lineColor)
             }
             if let elapsed {
                 RuleMark(x: .value("Now", elapsed))
@@ -231,10 +241,12 @@ struct CurveChart: View {
 struct CurveEditorView: View {
     @State var curve: HeatCurve
     let celsius: Bool
+    let showEffects: Bool
     /// "Delete curve", "Reset to default", or nil when there's nothing to remove.
     let removeTitle: String?
     let onSave: (HeatCurve) -> Void
     let onDelete: (HeatCurve) -> Void
+    let onPreview: (PreviewLook?) -> Void
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -265,6 +277,7 @@ struct CurveEditorView: View {
                 } footer: {
                     Text("Temperatures 400–580°F, up to 120 seconds. Swipe a point to delete it.")
                 }
+                lightsSection
                 if let removeTitle {
                     Section {
                         Button(removeTitle, role: .destructive) {
@@ -290,6 +303,52 @@ struct CurveEditorView: View {
             }
         }
         .navigationViewStyle(.stack)
+        .onDisappear { onPreview(nil) }
+    }
+
+    @ViewBuilder
+    private var lightsSection: some View {
+        Section {
+            Toggle("Light color", isOn: Binding(
+                get: { curve.color != nil },
+                set: { on in
+                    curve.color = on ? (curve.color ?? RGB(r: 255, g: 120, b: 0)) : nil
+                    if !on { curve.effect = nil }
+                    previewLights()
+                }
+            ))
+            if curve.color != nil {
+                ColorPicker("Color", selection: Binding(
+                    get: { curve.color?.color ?? .orange },
+                    set: { curve.color = RGB($0); previewLights() }
+                ), supportsOpacity: false)
+                if showEffects {
+                    Picker("Effect", selection: Binding(
+                        get: { curve.effect ?? .steady },
+                        set: { curve.effect = $0; previewLights() }
+                    )) {
+                        ForEach(LightEffect.allCases) { e in
+                            Text(e.name).tag(e)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+        } header: {
+            Text("Lights")
+        } footer: {
+            Text(curve.color == nil
+                 ? "Off: the Peak keeps profile 4's lights while the curve runs."
+                 : "Your Peak shows this while the curve runs, then profile 4's lights come back. It previews live while you choose.")
+        }
+    }
+
+    private func previewLights() {
+        if let color = curve.color {
+            onPreview(.singleColor(color, showEffects ? (curve.effect ?? .steady) : nil))
+        } else {
+            onPreview(nil)
+        }
     }
 
     private func pointRow(_ point: Binding<CurvePoint>) -> some View {

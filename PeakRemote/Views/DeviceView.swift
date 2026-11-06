@@ -88,7 +88,9 @@ struct DeviceView: View {
             ready: ready && !c.status.state.isHeating,
             liveTempC: c.status.tempC,
             celsius: useCelsius,
-            onLock: { studioUnlocked = false }
+            onLock: { studioUnlocked = false },
+            onPreview: { look in c.preview(look) },
+            showEffects: c.colorFormat != .api3
         )
     }
 
