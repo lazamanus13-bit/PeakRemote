@@ -40,7 +40,7 @@ final class PuffcoController: NSObject, ObservableObject {
     /// Whether the device has replied to anything this connection (it stays silent until paired).
     private var gotAnyReply = false
 
-    private var nextSeq: UInt16 = 0
+    private var nextSeq: UInt16 = 0xFFFF
     private var pendingReplies: [UInt16: CheckedContinuation<Lorax.Reply, Error>] = [:]
     private var pendingReads: [CBUUID: CheckedContinuation<Data, Error>] = [:]
     private let gate = AsyncGate()
@@ -116,6 +116,7 @@ final class PuffcoController: NSObject, ObservableObject {
         setupStep = ""
         verbose = true
         gotAnyReply = false
+        nextSeq = 0xFFFF
         unsupportedPaths = []
         failPending(PuffcoError.notConnected)
     }
@@ -162,6 +163,7 @@ final class PuffcoController: NSObject, ObservableObject {
                     appendLog("Version read failed (continuing): \(error.localizedDescription)")
                 }
             }
+            await readEverythingReadable()
 
             phase = .authenticating
             try await Task.sleep(nanoseconds: 500_000_000) // let the device settle, as melt does
@@ -192,6 +194,28 @@ final class PuffcoController: NSObject, ObservableObject {
             } else {
                 let step = setupStep.isEmpty ? "" : " (step: \(setupStep))"
                 fail(error.localizedDescription + step)
+            }
+        }
+    }
+
+    /// Reads every readable characteristic outside the Lorax/Device Info services.
+    /// If any of them requires encryption, iOS shows its pairing prompt and bonds with the Peak.
+    private func readEverythingReadable() async {
+        guard let p = peripheral else { return }
+        for service in p.services ?? [] where service.uuid != Lorax.serviceUUID && service.uuid != Lorax.deviceInfoServiceUUID {
+            appendLog("Service \(service.uuid.uuidString.prefix(8))")
+            for c in service.characteristics ?? [] {
+                let id = String(c.uuid.uuidString.prefix(8))
+                guard c.properties.contains(.read) else {
+                    appendLog("  \(id): \(Self.describe(c.properties))")
+                    continue
+                }
+                do {
+                    let data = try await readCharacteristic(c, timeout: 30)
+                    appendLog("  \(id) read: \([UInt8](data).prefix(24).hex)")
+                } catch {
+                    appendLog("  \(id) read error: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -229,8 +253,7 @@ final class PuffcoController: NSObject, ObservableObject {
             throw PuffcoError.notConnected
         }
 
-        nextSeq = nextSeq &+ 1
-        if nextSeq == 0 { nextSeq = 1 }
+        nextSeq = nextSeq &+ 1 // starts at 0 on each connection, like the official app
         let seq = nextSeq
         let packet = Lorax.command(seq: seq, opcode: opcode, body: body)
         // Write with response when possible (melt found unacknowledged writes get dropped).
@@ -550,7 +573,7 @@ final class PuffcoController: NSObject, ObservableObject {
     private func handleConnected(_ p: CBPeripheral) {
         guard p == peripheral else { return }
         appendLog("Connected. Discovering services…")
-        p.discoverServices([Lorax.serviceUUID, Lorax.deviceInfoServiceUUID])
+        p.discoverServices(nil) // all services: reading the protected ones makes iOS pair
     }
 
     private func handleDisconnected(_ p: CBPeripheral, error: Error?) {
