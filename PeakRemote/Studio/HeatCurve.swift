@@ -57,36 +57,50 @@ struct CurvePoint: Codable, Equatable, Identifiable {
 }
 
 extension HeatCurve {
-    private static func preset(_ name: String, _ detail: String, _ pts: [(Double, Double)]) -> HeatCurve {
-        HeatCurve(name: name, detail: detail, points: pts.map { CurvePoint(time: $0.0, tempF: $0.1) }, isPreset: true)
+    /// Presets get fixed IDs so edits to them can be saved and matched up again.
+    private static func preset(_ id: String, _ name: String, _ detail: String, _ pts: [(Double, Double)]) -> HeatCurve {
+        HeatCurve(id: UUID(uuidString: id) ?? UUID(), name: name, detail: detail,
+                  points: pts.map { CurvePoint(time: $0.0, tempF: $0.1) }, isPreset: true)
     }
 
     /// Preset curves from puff-studio's curves.json (MIT).
     static let presets: [HeatCurve] = [
-        preset("Step Down", "Three steps from hot to mellow.",
+        preset("00000000-0000-0000-0000-00000000C001", "Step Down", "Three steps from hot to mellow.",
                [(0, 535), (15, 535), (18, 485), (35, 485), (45, 430), (60, 430)]),
-        preset("Decay", "Hot start for thick vapor, cooling as the dab thins out.",
+        preset("00000000-0000-0000-0000-00000000C002", "Decay", "Hot start for thick vapor, cooling as the dab thins out.",
                [(0, 535), (12, 525), (30, 475), (55, 436)]),
-        preset("Linear", "A smooth, steady ramp down.",
+        preset("00000000-0000-0000-0000-00000000C003", "Linear", "A smooth, steady ramp down.",
                [(0, 535), (60, 420)]),
-        preset("Dwell", "A long low plateau for delicate concentrates.",
+        preset("00000000-0000-0000-0000-00000000C004", "Dwell", "A long low plateau for delicate concentrates.",
                [(0, 490), (20, 490), (25, 460), (60, 460)]),
-        preset("Temp Burst", "Steady 480°F with a hot finish.",
+        preset("00000000-0000-0000-0000-00000000C005", "Temp Burst", "Steady 480°F with a hot finish.",
                [(0, 480), (38, 480), (42, 535), (55, 535)]),
     ]
 }
 
-/// Saved custom curves (stored on this device only).
+/// Saved curves (stored on this device only): your own curves, plus your edits to the presets.
 enum CurveStore {
-    private static let key = "studioCustomCurves"
+    private static let customKey = "studioCustomCurves"
+    private static let presetEditsKey = "studioPresetEdits"
 
-    static func load() -> [HeatCurve] {
+    static func load() -> [HeatCurve] { read(customKey) }
+    static func save(_ curves: [HeatCurve]) { write(curves, customKey) }
+
+    static func loadPresetEdits() -> [HeatCurve] { read(presetEditsKey) }
+    static func savePresetEdits(_ curves: [HeatCurve]) { write(curves, presetEditsKey) }
+
+    /// The presets, with any of your edits swapped in.
+    static func presets(with edits: [HeatCurve]) -> [HeatCurve] {
+        HeatCurve.presets.map { preset in edits.first { $0.id == preset.id } ?? preset }
+    }
+
+    private static func read(_ key: String) -> [HeatCurve] {
         guard let data = UserDefaults.standard.data(forKey: key),
               let curves = try? JSONDecoder().decode([HeatCurve].self, from: data) else { return [] }
         return curves
     }
 
-    static func save(_ curves: [HeatCurve]) {
+    private static func write(_ curves: [HeatCurve], _ key: String) {
         if let data = try? JSONEncoder().encode(curves) {
             UserDefaults.standard.set(data, forKey: key)
         }

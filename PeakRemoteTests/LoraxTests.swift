@@ -194,4 +194,15 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(wild.points.last?.time, 120)
         XCTAssertEqual(HeatCurve.presets.count, 5)
     }
+
+    func testPresetEditsReplacePresets() {
+        var edited = HeatCurve.presets[1]
+        edited.points = [CurvePoint(time: 0, tempF: 450), CurvePoint(time: 30, tempF: 450)]
+        let list = CurveStore.presets(with: [edited])
+        XCTAssertEqual(list.count, HeatCurve.presets.count)
+        XCTAssertEqual(list[1].startTempF, 450)
+        XCTAssertEqual(list[0], HeatCurve.presets[0])
+        // Preset IDs are fixed so edits still match after relaunching
+        XCTAssertEqual(HeatCurve.presets[0].id.uuidString, "00000000-0000-0000-0000-00000000C001")
+    }
 }

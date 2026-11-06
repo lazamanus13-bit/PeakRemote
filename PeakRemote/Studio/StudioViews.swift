@@ -63,6 +63,7 @@ struct StudioCard: View {
     let onLock: () -> Void
 
     @State private var custom: [HeatCurve] = CurveStore.load()
+    @State private var presetEdits: [HeatCurve] = CurveStore.loadPresetEdits()
     @State private var editing: HeatCurve?
 
     var body: some View {
@@ -70,9 +71,12 @@ struct StudioCard: View {
             if runner.isBusy || isFinished {
                 runPanel
             }
-            ForEach(HeatCurve.presets + custom) { curve in
+            ForEach(CurveStore.presets(with: presetEdits) + custom) { curve in
                 curveRow(curve)
             }
+            Text("Long-press a curve to edit it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             HStack {
                 Button {
                     editing = HeatCurve(name: "My curve", points: [CurvePoint(time: 0, tempF: 500), CurvePoint(time: 45, tempF: 470)])
@@ -86,7 +90,7 @@ struct StudioCard: View {
             }
         }
         .sheet(item: $editing) { curve in
-            CurveEditorView(curve: curve, celsius: celsius, onSave: save, onDelete: delete)
+            CurveEditorView(curve: curve, celsius: celsius, removeTitle: removeTitle(for: curve), onSave: save, onDelete: delete)
         }
     }
 
@@ -153,9 +157,31 @@ struct StudioCard: View {
                 .tint(.orange)
                 .disabled(!ready || runner.isBusy)
         }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button {
+                editing = curve
+            } label: {
+                Label("Edit curve", systemImage: "slider.horizontal.3")
+            }
+        }
+    }
+
+    /// Presets can be reset once edited; your own curves can be deleted.
+    private func removeTitle(for curve: HeatCurve) -> String? {
+        if curve.isPreset {
+            return presetEdits.contains { $0.id == curve.id } ? "Reset to default" : nil
+        }
+        return custom.contains { $0.id == curve.id } ? "Delete curve" : nil
     }
 
     private func save(_ curve: HeatCurve) {
+        if curve.isPreset {
+            presetEdits.removeAll { $0.id == curve.id }
+            presetEdits.append(curve)
+            CurveStore.savePresetEdits(presetEdits)
+            return
+        }
         if let i = custom.firstIndex(where: { $0.id == curve.id }) {
             custom[i] = curve
         } else {
@@ -165,8 +191,13 @@ struct StudioCard: View {
     }
 
     private func delete(_ curve: HeatCurve) {
-        custom.removeAll { $0.id == curve.id }
-        CurveStore.save(custom)
+        if curve.isPreset {
+            presetEdits.removeAll { $0.id == curve.id }
+            CurveStore.savePresetEdits(presetEdits)
+        } else {
+            custom.removeAll { $0.id == curve.id }
+            CurveStore.save(custom)
+        }
     }
 }
 
@@ -200,6 +231,8 @@ struct CurveChart: View {
 struct CurveEditorView: View {
     @State var curve: HeatCurve
     let celsius: Bool
+    /// "Delete curve", "Reset to default", or nil when there's nothing to remove.
+    let removeTitle: String?
     let onSave: (HeatCurve) -> Void
     let onDelete: (HeatCurve) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -232,9 +265,9 @@ struct CurveEditorView: View {
                 } footer: {
                     Text("Temperatures 400–580°F, up to 120 seconds. Swipe a point to delete it.")
                 }
-                if CurveStore.load().contains(where: { $0.id == curve.id }) {
+                if let removeTitle {
                     Section {
-                        Button("Delete curve", role: .destructive) {
+                        Button(removeTitle, role: .destructive) {
                             onDelete(curve)
                             dismiss()
                         }
