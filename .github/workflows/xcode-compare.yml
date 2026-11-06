@@ -1,5 +1,5 @@
-# Manually triggered: builds with each installed Xcode and reports Swift runtime
-# symbols that don't exist on older iOS versions (a known cause of launch crashes).
+# Manually triggered: lists the strongly-linked (non-weak) Swift/SwiftUI symbols the app imports,
+# demangled, to spot anything that doesn't exist on older iOS versions.
 name: Xcode compare
 
 on:
@@ -11,24 +11,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: brew install xcodegen && xcodegen generate
-      - name: Build with each Xcode and inspect imports
+      - name: Build and inspect imports
         run: |
-          ls -d /Applications/Xcode_*.app
-          for X in /Applications/Xcode_1[5-9]*.app /Applications/Xcode_2*.app; do
-            [ -d "$X" ] || continue
-            [ -L "$X" ] && continue
-            V=$(basename "$X" .app)
-            echo "================ $V"
-            rm -rf build-$V
-            DEVELOPER_DIR="$X/Contents/Developer" xcodebuild build -project PeakRemote.xcodeproj -scheme PeakRemote \
-              -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
-              -derivedDataPath build-$V CODE_SIGNING_ALLOWED=NO -quiet 2>&1 | grep -E "error:" | head -5
-            BIN=build-$V/Build/Products/Release-iphoneos/PeakRemote.app/PeakRemote
-            if [ ! -f "$BIN" ]; then echo "RESULT $V: build failed"; continue; fi
-            DEVELOPER_DIR="$X/Contents/Developer" xcrun dyld_info -imports "$BIN" > imports-$V.txt 2>&1 || nm -um "$BIN" > imports-$V.txt
-            SUSPECT=$(grep -cE "makeUniqueAndReserveCapacity|getElementSlowPath" imports-$V.txt || true)
-            echo "RESULT $V: suspect symbols = $SUSPECT"
-            grep -E "makeUniqueAndReserveCapacity|getElementSlowPath" imports-$V.txt | head -5
-            echo "-- libswiftCore imports (first 40):"
-            grep -iE "swiftCore|\\\$s" imports-$V.txt | head -40
-          done
+          xcodebuild build -project PeakRemote.xcodeproj -scheme PeakRemote \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO -quiet 2>&1 | grep -E "error:" | head -5
+          BIN=build/Build/Products/Release-iphoneos/PeakRemote.app/PeakRemote
+          xcrun vtool -show-build "$BIN" | head -20
+          xcrun dyld_info -imports "$BIN" > imports.txt
+          echo "== linked dylibs"; otool -L "$BIN"
+          echo "== strong (non-weak) Swift imports, demangled"
+          grep -v "weak-import" imports.txt | grep -oE '_\$s[A-Za-z0-9_]+|_swift_[A-Za-z0-9_]+' | sort -u > strong.txt
+          wc -l strong.txt
+          while read sym; do printf "%s\t%s\n" "$sym" "$(echo "$sym" | xcrun swift-demangle --simplified)"; done < strong.txt | cut -f2 | sort
+          echo "== weak imports, demangled"
+          grep "weak-import" imports.txt | grep -oE '_\$s[A-Za-z0-9_]+' | sort -u | xcrun swift-demangle --simplified
