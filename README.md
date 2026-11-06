@@ -89,3 +89,13 @@ project.yml                      XcodeGen spec
 ## Notes
 - This app is for personal use. Apple's App Store rules on vaping-related apps, plus Puffco's trademarks, mean it probably wouldn't be approved for public release.
 - Power off and factory reset are deliberately left out.
+
+## Studio (heat curves)
+
+Tap **Jailbreak** on the Device card to unlock Studio. It runs heat curves: the app moves the Peak's
+target temperature along a curve during a session. Safety limits are always on (targets 350–590 °F,
+automatic stop at 600 °F, profile 4 backed up and restored after each run).
+
+Studio's approach and preset curves come from [puff-studio](https://github.com/SoyMilkIsOk/puff-studio)
+by SoyMilkIsOk (MIT). Protocol details also draw on [puffco-py](https://github.com/SoyMilkIsOk/puffco-py)
+and [PuffcoBLE](https://github.com/Fr0st3h/PuffcoBLE) (both MIT).

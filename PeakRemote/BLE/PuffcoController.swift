@@ -20,6 +20,9 @@ final class PuffcoController: NSObject, ObservableObject {
     @Published private(set) var log: [String] = []
     @Published private(set) var lastDevice: CBPeripheral?
 
+    /// Studio heat-curve runner (unlocked with the Jailbreak button).
+    lazy var curves = CurveRunner(controller: self)
+
     var visibleDevices: [DiscoveredDevice] {
         let list = showAllDevices ? devices : devices.filter(\.isLikelyPuffco)
         return list.sorted { $0.rssi > $1.rssi }
@@ -692,6 +695,20 @@ final class PuffcoController: NSObject, ObservableObject {
         }
         let reply = try await send(.writeShort, body: Lorax.writeShortBody(path: LoraxPath.previewColor, value: bytes))
         if reply.status != 0 { appendLog("Preview write status \(reply.status)") }
+    }
+
+    // MARK: - Awaitable commands (Studio)
+
+    /// Sends a mode command and reports whether the Peak accepted it.
+    func sendModeCommand(_ command: ModeCommand) async throws -> Bool {
+        try await writePath(LoraxPath.modeCommand, [command.rawValue])
+    }
+
+    /// Selects a profile slot and waits for the Peak's answer.
+    func setActiveProfileNow(_ slot: Int) async throws -> Bool {
+        let ok = try await writePath(LoraxPath.activeProfile, [UInt8(slot)])
+        if ok { status.activeProfile = slot }
+        return ok
     }
 
     func setStealth(_ on: Bool) {

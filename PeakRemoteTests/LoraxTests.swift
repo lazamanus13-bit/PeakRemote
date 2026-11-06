@@ -180,4 +180,18 @@ final class LoraxTests: XCTestCase {
         look.pattern = .fade
         XCTAssertTrue(look.offsetListBytes().allSatisfy { $0 == 0 })
     }
+
+    func testHeatCurveInterpolation() {
+        let curve = HeatCurve(name: "Test", points: [CurvePoint(time: 0, tempF: 500), CurvePoint(time: 40, tempF: 460)])
+        XCTAssertEqual(curve.temp(at: 0), 500)
+        XCTAssertEqual(curve.temp(at: 20), 480, accuracy: 0.001)
+        XCTAssertEqual(curve.temp(at: 99), 460)
+        XCTAssertEqual(curve.duration, 40)
+        // Sanitizing clamps temperatures into 400-580 °F and times into 0-120 s
+        let wild = HeatCurve(name: "Wild", points: [CurvePoint(time: -5, tempF: 900), CurvePoint(time: 500, tempF: 100)]).sanitized()
+        XCTAssertEqual(wild.points.first?.tempF, 580)
+        XCTAssertEqual(wild.points.last?.tempF, 400)
+        XCTAssertEqual(wild.points.last?.time, 120)
+        XCTAssertEqual(HeatCurve.presets.count, 5)
+    }
 }

@@ -11,6 +11,8 @@ struct DeviceView: View {
     @State private var lanternCommit: Task<Void, Never>?
     @State private var lanternEffect: LightEffect = .steady
     @State private var showLanternColors = false
+    @AppStorage("studioUnlocked") private var studioUnlocked = false
+    @State private var showJailbreak = false
     @Environment(\.openURL) private var openURL
     @State private var showFirmwareHelp = false
     @State private var showLog = false
@@ -70,6 +72,7 @@ struct DeviceView: View {
 
     private var cardsColumn: some View {
         VStack(spacing: 20) {
+            if studioUnlocked { studio }
             profiles
             readyMode
             lights
@@ -77,6 +80,16 @@ struct DeviceView: View {
             battery
             info
         }
+    }
+
+    private var studio: some View {
+        StudioCard(
+            runner: c.curves,
+            ready: ready && !c.status.state.isHeating,
+            liveTempC: c.status.tempC,
+            celsius: useCelsius,
+            onLock: { studioUnlocked = false }
+        )
     }
 
     @ToolbarContentBuilder
@@ -108,6 +121,9 @@ struct DeviceView: View {
     private func presentations<V: View>(_ content: V) -> some View {
         content
             .sheet(item: $editingProfile) { profile in editor(for: profile) }
+            .sheet(isPresented: $showJailbreak) {
+                JailbreakSheet { studioUnlocked = true }
+            }
             .sheet(isPresented: $showLanternColors) {
                 LanternColorsSheet(
                     look: .default,
@@ -310,6 +326,17 @@ struct DeviceView: View {
             InfoRow(label: "Chamber", value: ChamberLabel.name(c.status.chamberRaw))
             InfoRow(label: "Model", value: c.status.model ?? "—")
             InfoRow(label: "Firmware", value: c.status.firmware ?? "—")
+            if studioUnlocked {
+                Label("Studio unlocked", systemImage: "lock.open.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.orange)
+            } else {
+                Button {
+                    showJailbreak = true
+                } label: {
+                    Label("Jailbreak", systemImage: "lock.open")
+                }
+            }
             Button {
                 showFirmwareHelp = true
             } label: {
