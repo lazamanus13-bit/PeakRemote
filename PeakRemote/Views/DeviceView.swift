@@ -16,105 +16,130 @@ struct DeviceView: View {
 
     private var ready: Bool { c.phase == .ready }
 
+    // The body is split into pieces so the Swift compiler can type-check each one quickly.
     var body: some View {
+        syncState(presentations(chrome))
+    }
+
+    private var chrome: some View {
+        scrollContent
+            .navigationTitle(c.status.deviceName ?? c.connectedName ?? "Peak")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbarContent }
+    }
+
+    private var scrollContent: some View {
         ScrollView {
             Group {
-                if sizeClass == .regular {
-                    // iPad: dial and heat controls on the left, everything else on the right.
-                    VStack(spacing: 20) {
-                        if !ready { PhaseBanner(phase: c.phase) }
-                        HStack(alignment: .top, spacing: 24) {
-                            VStack(spacing: 24) {
-                                TemperatureDial(status: c.status, celsius: useCelsius, size: 340)
-                                    .opacity(ready ? 1 : 0.4)
-                                controls
-                            }
-                            .frame(maxWidth: .infinity)
-                            VStack(spacing: 20) {
-                                profiles
-                                readyMode
-                                lights
-                                stats
-                                battery
-                                info
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .frame(maxWidth: 1100)
-                } else {
-                    VStack(spacing: 20) {
-                        if !ready { PhaseBanner(phase: c.phase) }
-
-                        TemperatureDial(status: c.status, celsius: useCelsius)
-                            .opacity(ready ? 1 : 0.4)
-
-                        controls
-                        profiles
-                        readyMode
-                        lights
-                        stats
-                        battery
-                        info
-                    }
-                    .frame(maxWidth: 600)
-                }
+                if sizeClass == .regular { wideLayout } else { narrowLayout }
             }
             .padding()
             .frame(maxWidth: .infinity)
         }
-        .navigationTitle(c.status.deviceName ?? c.connectedName ?? "Peak")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("Disconnect") { c.disconnect() }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 14) {
-                    BatteryBadge(percent: c.status.batteryPct, charging: ChargeLabel.isCharging(c.status.chargeRaw))
-                    Button { showLog = true } label: { Image(systemName: "ladybug") }
-                        .accessibilityLabel("Debug log")
+    }
+
+    /// iPad: dial and heat controls on the left, everything else on the right.
+    private var wideLayout: some View {
+        VStack(spacing: 20) {
+            if !ready { PhaseBanner(phase: c.phase) }
+            HStack(alignment: .top, spacing: 24) {
+                VStack(spacing: 24) {
+                    TemperatureDial(status: c.status, celsius: useCelsius, size: 340)
+                        .opacity(ready ? 1 : 0.4)
+                    controls
                 }
+                .frame(maxWidth: .infinity)
+                cardsColumn
+                    .frame(maxWidth: .infinity)
             }
         }
-        .sheet(item: $editingProfile) { profile in
-            ProfileEditView(
-                profile: profile,
-                celsius: useCelsius,
-                allowXL: c.status.chamberRaw == 2,
-                showEffects: c.colorFormat != .api3,
-                onSave: { edit in c.saveProfile(slot: profile.slot, edit: edit) },
-                onPreview: { color, effect in c.preview(color, effect: effect) }
-            )
+        .frame(maxWidth: 1100)
+    }
+
+    private var narrowLayout: some View {
+        VStack(spacing: 20) {
+            if !ready { PhaseBanner(phase: c.phase) }
+            TemperatureDial(status: c.status, celsius: useCelsius)
+                .opacity(ready ? 1 : 0.4)
+            controls
+            cardsColumn
         }
-        .sheet(isPresented: $showLog) {
-            NavigationView { LogView() }
-                .navigationViewStyle(.stack)
-                .environmentObject(c)
+        .frame(maxWidth: 600)
+    }
+
+    private var cardsColumn: some View {
+        VStack(spacing: 20) {
+            profiles
+            readyMode
+            lights
+            stats
+            battery
+            info
         }
-        .alert("Firmware updates", isPresented: $showFirmwareHelp) {
-            Button("Disconnect so the computer can connect") { c.disconnect() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Firmware updates come from Puffco's web app. On a computer, open Google Chrome, go to puffco.app, connect your Peak, and check for updates there. Peak Remote has to disconnect first: the Peak only talks to one device at a time.")
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button("Disconnect") { c.disconnect() }
         }
-        .alert("Something went wrong", isPresented: errorBinding) {
-            Button("OK") { c.lastError = nil }
-        } message: {
-            Text(c.lastError ?? "")
+        ToolbarItem(placement: .navigationBarTrailing) {
+            HStack(spacing: 14) {
+                BatteryBadge(percent: c.status.batteryPct, charging: ChargeLabel.isCharging(c.status.chargeRaw))
+                Button { showLog = true } label: { Image(systemName: "ladybug") }
+                    .accessibilityLabel("Debug log")
+            }
         }
-        .onAppear {
-            if let b = c.status.brightness { brightness = Double(b) }
-        }
-        .onChange(of: c.status.brightness) { value in
-            if let value { brightness = Double(value) }
-        }
-        .onChange(of: c.status.lanternColor) { value in
-            if let value { lanternColor = value.color }
-        }
-        .onChange(of: c.status.lanternEffect) { value in
-            if let value { lanternEffect = value }
-        }
+    }
+
+    private func editor(for profile: HeatProfile) -> ProfileEditView {
+        let controller = c
+        return ProfileEditView(
+            profile: profile,
+            celsius: useCelsius,
+            allowXL: controller.status.chamberRaw == 2,
+            showEffects: controller.colorFormat != .api3,
+            onSave: { edit in controller.saveProfile(slot: profile.slot, edit: edit) },
+            onPreview: { color, effect in controller.preview(color, effect: effect) }
+        )
+    }
+
+    private func presentations<V: View>(_ content: V) -> some View {
+        content
+            .sheet(item: $editingProfile) { profile in editor(for: profile) }
+            .sheet(isPresented: $showLog) {
+                NavigationView { LogView() }
+                    .navigationViewStyle(.stack)
+                    .environmentObject(c)
+            }
+            .alert("Firmware updates", isPresented: $showFirmwareHelp) {
+                Button("Disconnect so the computer can connect") { c.disconnect() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Firmware updates come from Puffco's web app. On a computer, open Google Chrome, go to puffco.app, connect your Peak, and check for updates there. Peak Remote has to disconnect first: the Peak only talks to one device at a time.")
+            }
+            .alert("Something went wrong", isPresented: errorBinding) {
+                Button("OK") { c.lastError = nil }
+            } message: {
+                Text(c.lastError ?? "")
+            }
+    }
+
+    /// Keeps local control state in step with values read from the Peak.
+    private func syncState<V: View>(_ content: V) -> some View {
+        content
+            .onAppear {
+                if let b = c.status.brightness { brightness = Double(b) }
+            }
+            .onChange(of: c.status.brightness) { value in
+                if let value { brightness = Double(value) }
+            }
+            .onChange(of: c.status.lanternColor) { value in
+                if let value { lanternColor = value.color }
+            }
+            .onChange(of: c.status.lanternEffect) { value in
+                if let value { lanternEffect = value }
+            }
     }
 
     private var errorBinding: Binding<Bool> {
@@ -165,6 +190,34 @@ struct DeviceView: View {
         .disabled(!ready)
     }
 
+    private var lanternColorBinding: Binding<Color> {
+        Binding(get: { lanternColor }, set: { newColor in
+            lanternColor = newColor
+            previewAndCommitLantern()
+        })
+    }
+
+    private var lanternEffectBinding: Binding<LightEffect> {
+        Binding(get: { lanternEffect }, set: { newEffect in
+            lanternEffect = newEffect
+            previewAndCommitLantern()
+        })
+    }
+
+    private var lanternControls: some View {
+        Group {
+            ColorPicker("Lantern color", selection: lanternColorBinding, supportsOpacity: false)
+            if c.colorFormat != .api3 {
+                Picker("Lantern effect", selection: lanternEffectBinding) {
+                    ForEach(LightEffect.allCases) { e in
+                        Text(e.name).tag(e)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+        }
+    }
+
     private var lights: some View {
         Card("Lights") {
             Toggle("Stealth mode", isOn: Binding(
@@ -175,27 +228,7 @@ struct DeviceView: View {
                 get: { c.status.lantern },
                 set: { c.setLantern($0) }
             ))
-            ColorPicker("Lantern color", selection: Binding(
-                get: { lanternColor },
-                set: { newColor in
-                    lanternColor = newColor
-                    previewAndCommitLantern()
-                }
-            ), supportsOpacity: false)
-            if c.colorFormat != .api3 {
-                Picker("Lantern effect", selection: Binding(
-                    get: { lanternEffect },
-                    set: { newEffect in
-                        lanternEffect = newEffect
-                        previewAndCommitLantern()
-                    }
-                )) {
-                    ForEach(LightEffect.allCases) { e in
-                        Text(e.name).tag(e)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
+            lanternControls
             if c.status.lantern, let left = c.status.lanternRemainingS, left > 0 {
                 InfoRow(label: "Lantern time left", value: Fmt.duration(left))
             }
