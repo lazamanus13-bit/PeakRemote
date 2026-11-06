@@ -9,8 +9,8 @@ struct ProfileEditView: View {
     /// Firmware light effects only work with the 8-byte color format.
     let showEffects: Bool
     let onSave: (ProfileEdit) -> Void
-    /// Shows the color on the Peak while choosing; nil ends the preview.
-    let onPreview: (RGB?, LightEffect?) -> Void
+    /// Shows the look on the Peak while choosing; nil ends the preview.
+    let onPreview: (PreviewLook?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var tempF: Double
@@ -22,6 +22,9 @@ struct ProfileEditView: View {
     @State private var effect: LightEffect
     @State private var effectChanged = false
     @State private var vapor: VaporLevel?
+    @State private var multiColor: Bool
+    @State private var multi = MultiColorLook.default
+    @State private var multiChanged = false
 
     // Limits from the official app.
     static let tempRangeF: ClosedRange<Double> = 400...644
@@ -32,8 +35,9 @@ struct ProfileEditView: View {
     init(profile: HeatProfile, celsius: Bool, allowXL: Bool,
          showEffects: Bool,
          onSave: @escaping (ProfileEdit) -> Void,
-         onPreview: @escaping (RGB?, LightEffect?) -> Void) {
+         onPreview: @escaping (PreviewLook?) -> Void) {
         self.showEffects = showEffects
+        _multiColor = State(initialValue: showEffects && profile.isMultiColor)
         _effect = State(initialValue: profile.lightEffect ?? .steady)
         self.profile = profile
         self.celsius = celsius
@@ -49,6 +53,70 @@ struct ProfileEditView: View {
         _boostF = State(initialValue: clamp(boostF.rounded(), Self.boostRangeF))
         _boostSeconds = State(initialValue: clamp((profile.boostTimeS ?? 15).rounded(), Self.boostTimeRange))
         _color = State(initialValue: profile.color?.color ?? .orange)
+    }
+
+    private var singlePreview: PreviewLook {
+        .singleColor(RGB(color), showEffects ? effect : nil)
+    }
+
+    @ViewBuilder
+    private var colorSection: some View {
+        Section {
+            if showEffects {
+                Picker("Style", selection: Binding(
+                    get: { multiColor },
+                    set: { isMulti in
+                        multiColor = isMulti
+                        onPreview(isMulti ? .multiColor(multi) : singlePreview)
+                    }
+                )) {
+                    Text("Single color").tag(false)
+                    Text("Multiple colors").tag(true)
+                }
+                .pickerStyle(.segmented)
+            }
+            if multiColor {
+                MultiColorEditor(look: $multi) { look in
+                    multiChanged = true
+                    onPreview(.multiColor(look))
+                }
+            } else {
+                singleColorControls
+            }
+        } header: {
+            Text("Lights")
+        } footer: {
+            Text(profile.isMultiColor && !multiChanged && multiColor
+                 ? "This profile already uses multiple colors. Edit them here to replace them. Your Peak shows it live while you choose."
+                 : "Your Peak shows it live while you choose.")
+        }
+    }
+
+    @ViewBuilder
+    private var singleColorControls: some View {
+        ColorPicker("Profile color", selection: Binding(
+            get: { color },
+            set: {
+                color = $0
+                colorChanged = true
+                onPreview(singlePreview)
+            }
+        ), supportsOpacity: false)
+        if showEffects {
+            Picker("Effect", selection: Binding(
+                get: { effect },
+                set: {
+                    effect = $0
+                    effectChanged = true
+                    onPreview(singlePreview)
+                }
+            )) {
+                ForEach(LightEffect.allCases) { e in
+                    Text(e.name).tag(e)
+                }
+            }
+            .pickerStyle(.menu)
+        }
     }
 
     private var boostLabel: String {
@@ -77,34 +145,7 @@ struct ProfileEditView: View {
                 } footer: {
                     Text("What one press of Boost adds during this profile's session.")
                 }
-                Section("Color") {
-                    ColorPicker("Profile color", selection: Binding(
-                        get: { color },
-                        set: {
-                            color = $0
-                            colorChanged = true
-                            onPreview(RGB($0), showEffects ? effect : nil)
-                        }
-                    ), supportsOpacity: false)
-                    if showEffects {
-                        Picker("Effect", selection: Binding(
-                            get: { effect },
-                            set: {
-                                effect = $0
-                                effectChanged = true
-                                onPreview(RGB(color), $0)
-                            }
-                        )) {
-                            ForEach(LightEffect.allCases) { e in
-                                Text(e.name).tag(e)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    }
-                    Text("Your Peak shows it live while you choose.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                colorSection
                 if vapor != nil {
                     Section {
                         Picker("Vapor", selection: Binding(
@@ -123,7 +164,7 @@ struct ProfileEditView: View {
                     }
                 }
                 Section {
-                    Text("Saving writes these settings to your Peak. Color sets a single solid color; animated color effects from the official app aren't supported yet.")
+                    Text("Saving writes these settings to your Peak.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -141,8 +182,9 @@ struct ProfileEditView: View {
                             durationS: seconds,
                             boostTempDeltaC: boostF * 5 / 9,
                             boostTimeS: boostSeconds,
-                            color: (colorChanged || effectChanged) ? RGB(color) : nil,
-                            effect: showEffects && (colorChanged || effectChanged) ? effect : nil,
+                            color: !multiColor && (colorChanged || effectChanged || profile.isMultiColor) ? RGB(color) : nil,
+                            effect: showEffects && !multiColor && (colorChanged || effectChanged) ? effect : nil,
+                            multi: multiColor && (multiChanged || !profile.isMultiColor) ? multi : nil,
                             intensity: vapor?.rawValue
                         ))
                         dismiss()
@@ -152,7 +194,7 @@ struct ProfileEditView: View {
         }
         .navigationViewStyle(.stack)
         .presentationDetents([.medium, .large])
-        .onDisappear { onPreview(nil, nil) }
+        .onDisappear { onPreview(nil) }
     }
 }
 

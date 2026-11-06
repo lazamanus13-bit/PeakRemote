@@ -51,6 +51,7 @@ struct ProfileEdit {
     var boostTimeS: Double?
     var color: RGB?
     var effect: LightEffect?
+    var multi: MultiColorLook?
     var intensity: Double?
 }
 
@@ -77,8 +78,17 @@ enum LightEffect: UInt8, CaseIterable, Identifiable {
 
 /// A color plus animation to show live on the Peak.
 struct PreviewLook: Equatable {
-    var color: RGB
+    var color: RGB?
     var effect: LightEffect?
+    var multi: MultiColorLook?
+
+    static func singleColor(_ color: RGB, _ effect: LightEffect?) -> PreviewLook {
+        PreviewLook(color: color, effect: effect, multi: nil)
+    }
+
+    static func multiColor(_ look: MultiColorLook) -> PreviewLook {
+        PreviewLook(color: nil, effect: nil, multi: look)
+    }
 }
 
 /// Vapor levels and the values the official app writes to /u/app/hc/N/intn.
@@ -148,6 +158,7 @@ struct HeatProfile: Identifiable, Equatable {
     var intensity: Double?
     var color: RGB?
     var lightEffect: LightEffect?
+    var isMultiColor = false
 
     var id: Int { slot }
     var displayName: String { name ?? "Profile \(slot + 1)" }
@@ -178,6 +189,7 @@ struct DeviceStatus: Equatable {
     var brightness: UInt8?
     var lanternColor: RGB?
     var lanternEffect: LightEffect?
+    var lanternIsMultiColor = false
     var lanternRemainingS: Double?
 
     /// nil = unknown, -1 = off, 0...3 = profile that starts when lifted off the Power Dock.

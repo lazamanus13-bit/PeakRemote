@@ -535,6 +535,7 @@ final class PuffcoController: NSObject, ObservableObject {
                     if verbose || slot == 0 { appendLog("Profile \(slot + 1) color file: \(Array(b.prefix(48)).hex)") }
                     if let c = PeakColor.firstColor(in: b) { profile.color = RGB(r: c.0, g: c.1, b: c.2) }
                     profile.lightEffect = PeakColor.effect(in: b)
+                    profile.isMultiColor = PeakColor.isMultiColor(b)
                 }
                 status.profiles[slot] = profile
             }
@@ -545,6 +546,9 @@ final class PuffcoController: NSObject, ObservableObject {
                let c = PeakColor.firstColor(in: b) {
                 status.lanternColor = RGB(r: c.0, g: c.1, b: c.2)
                 status.lanternEffect = PeakColor.effect(in: b)
+            }
+            if let b = try await readAll(LoraxPath.lanternColor) {
+                status.lanternIsMultiColor = PeakColor.isMultiColor(b)
             }
         } catch {
             handlePollError(error)
@@ -594,7 +598,10 @@ final class PuffcoController: NSObject, ObservableObject {
             if let level = edit.intensity, level != profile.intensity {
                 try await c.writePath(LoraxPath.profileIntensity(slot), Encode.float32(Float(level)))
             }
-            if let color = edit.color, color != profile.color || (edit.effect != nil && edit.effect != profile.lightEffect) {
+            if let multi = edit.multi {
+                let pointer = try await c.writeMultiColor(multi, slot: MultiColorSlot.profile(slot))
+                try await c.writePath(LoraxPath.profileColor(slot), pointer)
+            } else if let color = edit.color, color != profile.color || profile.isMultiColor || (edit.effect != nil && edit.effect != profile.lightEffect) {
                 try await c.writeColor(LoraxPath.profileColor(slot), color, effect: edit.effect)
             }
             await c.refreshProfiles()
@@ -620,6 +627,22 @@ final class PuffcoController: NSObject, ObservableObject {
         }
     }
 
+    func setLanternMultiColor(_ look: MultiColorLook) {
+        perform("Lantern colors") { c in
+            let pointer = try await c.writeMultiColor(look, slot: MultiColorSlot.lantern)
+            if try await c.writePath(LoraxPath.lanternColor, pointer) {
+                c.status.lanternIsMultiColor = true
+            }
+        }
+    }
+
+    /// Writes the color list and offset list for `look` into `slot`; returns the 8-byte pointer to use.
+    private func writeMultiColor(_ look: MultiColorLook, slot: UInt8) async throws -> [UInt8] {
+        try await writeAll(LoraxPath.userColorList(slot), look.colorListBytes())
+        try await writeAll(LoraxPath.userOffsetList(slot), look.offsetListBytes())
+        return look.pointerBytes(slot: slot)
+    }
+
     /// Writes a solid color in whichever format this Peak uses (8-byte by default).
     @discardableResult
     private func writeColor(_ path: String, _ color: RGB, effect: LightEffect? = nil) async throws -> Bool {
@@ -635,8 +658,13 @@ final class PuffcoController: NSObject, ObservableObject {
     /// Shows a color on the Peak while the user is choosing it; nil ends the preview.
     /// Sends at most ~8 updates a second and always delivers the latest one.
     func preview(_ color: RGB?, effect: LightEffect? = nil) {
+        preview(color.map { PreviewLook.singleColor($0, effect) })
+    }
+
+    /// Live preview of a single color or a multi-color look; nil ends the preview.
+    func preview(_ look: PreviewLook?) {
         guard phase == .ready else { return }
-        pendingPreview = .some(color.map { PreviewLook(color: $0, effect: effect) })
+        pendingPreview = .some(look)
         guard previewTask == nil else { return }
         previewTask = Task { [weak self] in
             while let strong = self, let next = strong.pendingPreview {
@@ -655,8 +683,10 @@ final class PuffcoController: NSObject, ObservableObject {
     private func sendPreview(_ look: PreviewLook?) async throws {
         let format = colorFormat ?? .api2
         let bytes: [UInt8]
-        if let look {
-            bytes = PeakColor.payload(look.color, format: format, effect: look.effect)
+        if let multi = look?.multi, format == .api2 {
+            bytes = try await writeMultiColor(multi, slot: MultiColorSlot.preview)
+        } else if let look, let color = look.color {
+            bytes = PeakColor.payload(color, format: format, effect: look.effect)
         } else {
             bytes = format == .api2 ? PeakColor.api2None : [0xF6] // CBOR null
         }

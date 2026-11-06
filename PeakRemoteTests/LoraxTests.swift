@@ -149,4 +149,35 @@ final class LoraxTests: XCTestCase {
         XCTAssertNil(PeakColor.effect(in: PeakColor.api2None))
         XCTAssertEqual(LightEffect.circlingSlow.rawValue, 21)
     }
+
+    func testMultiColorFiles() {
+        var look = MultiColorLook(colors: [RGB(r: 255, g: 0, b: 0), RGB(r: 0, g: 0, b: 255)], pattern: .wave, speed: 1)
+        // 2 colors x 5 blend steps, [R, G, B, 0] each
+        let list = look.colorListBytes()
+        XCTAssertEqual(list.count, 40)
+        XCTAssertEqual(Array(list[0..<4]), [255, 0, 0, 0])
+        XCTAssertEqual(Array(list[20..<24]), [0, 0, 255, 0])
+        // 20 little-endian uint32 offsets; wave spreads the first 16 LEDs over one loop
+        let offsets = look.offsetListBytes()
+        XCTAssertEqual(offsets.count, 80)
+        XCTAssertEqual(Decode.uint32(Array(offsets[0..<4])), 0)
+        XCTAssertEqual(Decode.uint32(Array(offsets[32..<36])), UInt32(10 * 4096 * 8 / 16))
+        XCTAssertEqual(Decode.uint32(Array(offsets[76..<80])), 0)
+        // Pointer: brightness, speed, lumaAnim, type 1, pllNum, pllDenom, slots, count
+        let pointer = look.pointerBytes(slot: 2)
+        XCTAssertEqual(pointer.count, 8)
+        XCTAssertEqual(pointer[3], 1)
+        XCTAssertEqual(pointer[6], 0x22)
+        XCTAssertEqual(pointer[7], 10)
+        XCTAssertGreaterThan(pointer[1], 0)
+        XCTAssertEqual(pointer[5], 0)
+        XCTAssertTrue(PeakColor.isMultiColor(pointer))
+        // Gradient holds still: speed 0, phase-lock denominator 1
+        look.pattern = .gradient
+        XCTAssertEqual(look.pointerBytes(slot: 0)[1], 0)
+        XCTAssertEqual(look.pointerBytes(slot: 0)[5], 1)
+        // Fade: every LED starts at the same place
+        look.pattern = .fade
+        XCTAssertTrue(look.offsetListBytes().allSatisfy { $0 == 0 })
+    }
 }

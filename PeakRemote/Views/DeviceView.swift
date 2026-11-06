@@ -10,6 +10,7 @@ struct DeviceView: View {
     @State private var lanternColor: Color = .orange
     @State private var lanternCommit: Task<Void, Never>?
     @State private var lanternEffect: LightEffect = .steady
+    @State private var showLanternColors = false
     @Environment(\.openURL) private var openURL
     @State private var showFirmwareHelp = false
     @State private var showLog = false
@@ -100,13 +101,20 @@ struct DeviceView: View {
             allowXL: controller.status.chamberRaw == 2,
             showEffects: controller.colorFormat != .api3,
             onSave: { edit in controller.saveProfile(slot: profile.slot, edit: edit) },
-            onPreview: { color, effect in controller.preview(color, effect: effect) }
+            onPreview: { look in controller.preview(look) }
         )
     }
 
     private func presentations<V: View>(_ content: V) -> some View {
         content
             .sheet(item: $editingProfile) { profile in editor(for: profile) }
+            .sheet(isPresented: $showLanternColors) {
+                LanternColorsSheet(
+                    look: .default,
+                    onPreview: { look in c.preview(look) },
+                    onSave: { look in c.setLanternMultiColor(look) }
+                )
+            }
             .sheet(isPresented: $showLog) {
                 NavigationView { LogView() }
                     .navigationViewStyle(.stack)
@@ -214,6 +222,11 @@ struct DeviceView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                Button {
+                    showLanternColors = true
+                } label: {
+                    Label(c.status.lanternIsMultiColor ? "Multiple colors (on)" : "Use multiple colors…", systemImage: "paintpalette")
+                }
             }
         }
     }
