@@ -313,6 +313,39 @@ final class PuffcoController: NSObject, ObservableObject {
         }
     }
 
+    /// Reads a whole file in chunks (color files can be longer than one packet).
+    func readAll(_ path: String, chunk: UInt16 = 96, limit: Int = 2048) async throws -> [UInt8]? {
+        if unsupportedPaths.contains(path) { return nil }
+        var out: [UInt8] = []
+        while out.count < limit {
+            let reply: Lorax.Reply
+            do {
+                reply = try await send(.readShort, body: Lorax.readShortBody(path: path, offset: UInt16(out.count), size: chunk))
+            } catch PuffcoError.timeout {
+                unsupportedPaths.insert(path)
+                return out.isEmpty ? nil : out
+            }
+            guard reply.status == 0, !reply.payload.isEmpty else { break }
+            out += reply.payload
+            if reply.payload.count < Int(chunk) { break }
+        }
+        return out.isEmpty ? nil : out
+    }
+
+    /// Writes a whole file in chunks at increasing offsets (as PuffcoBLE does for color files).
+    @discardableResult
+    func writeAll(_ path: String, _ value: [UInt8], chunk: Int = 80) async throws -> Bool {
+        var offset = 0
+        while offset < value.count {
+            let piece = Array(value[offset..<min(offset + chunk, value.count)])
+            let reply = try await send(.writeShort, body: Lorax.writeShortBody(path: path, value: piece, offset: UInt16(offset)))
+            appendLog("Write \(path) @\(offset) (\(piece.count) bytes) → status \(reply.status)")
+            guard reply.status == 0 else { return false }
+            offset += piece.count
+        }
+        return true
+    }
+
     @discardableResult
     func writePath(_ path: String, _ value: [UInt8]) async throws -> Bool {
         let reply = try await send(.writeShort, body: Lorax.writeShortBody(path: path, value: value))
@@ -420,6 +453,7 @@ final class PuffcoController: NSObject, ObservableObject {
             if status.serial == nil, let b = try await readOptional(LoraxPath.serial, size: 32) {
                 status.serial = Decode.string(b)
             }
+            try await pollSettingsAndStats()
             if !readDeviceInfo {
                 readDeviceInfo = true
                 if let b = try await readOptional(LoraxPath.firmwareRevision, size: 12), let rev = b.first {
@@ -433,6 +467,30 @@ final class PuffcoController: NSObject, ObservableObject {
             }
         } catch {
             handlePollError(error)
+        }
+    }
+
+    private func pollSettingsAndStats() async throws {
+        func float(_ path: String) async throws -> Double? {
+            guard let b = try await readOptional(path, size: 4) else { return nil }
+            return Decode.finiteFloat(b)
+        }
+        if let v = try await float(LoraxPath.readyMode) {
+            status.readyModeProfile = (v >= 0 && v < 4) ? Int(v) : -1
+        }
+        status.batteryVolts = try await float(LoraxPath.batteryVolts) ?? status.batteryVolts
+        status.batteryTempC = try await float(LoraxPath.batteryTemp) ?? status.batteryTempC
+        if let b = try await readOptional(LoraxPath.chargeSource, size: 1) { status.chargeSourceRaw = b.first }
+        status.chargeTimeToFullS = try await float(LoraxPath.chargeTimeToFull)
+        status.maxBatteryPct = try await float(LoraxPath.maxBatterySoc) ?? status.maxBatteryPct
+        status.lowBatteryWarnPct = try await float(LoraxPath.lowBatteryWarn) ?? status.lowBatteryWarnPct
+        if let b = try await readOptional(LoraxPath.totalHeatTime, size: 4) { status.totalHeatTimeS = Decode.seconds(b)?.value }
+        if let b = try await readOptional(LoraxPath.tripDabs, size: 4) { status.tripDabs = Decode.count(b) }
+        if let b = try await readOptional(LoraxPath.tripHeatTime, size: 4) { status.tripHeatTimeS = Decode.seconds(b)?.value }
+        status.dabsPerDay = try await float(LoraxPath.dabsPerDay) ?? status.dabsPerDay
+        status.dabsRemaining = try await float(LoraxPath.dabsRemaining) ?? status.dabsRemaining
+        if status.lantern {
+            status.lanternRemainingS = try await float(LoraxPath.lanternRemaining)
         }
     }
 
@@ -451,10 +509,27 @@ final class PuffcoController: NSObject, ObservableObject {
                     profile.durationS = s.value
                     profile.durationIsFloat = s.isFloat
                 }
+                if let b = try await readOptional(LoraxPath.profileBoostTemp(slot), size: 4) {
+                    profile.boostTempDeltaC = Decode.finiteFloat(b)
+                }
+                if let b = try await readOptional(LoraxPath.profileBoostTime(slot), size: 4) {
+                    profile.boostTimeS = Decode.finiteFloat(b)
+                }
+                if let b = try await readOptional(LoraxPath.profileIntensity(slot), size: 4) {
+                    profile.intensity = Decode.finiteFloat(b)
+                }
+                if let b = try await readAll(LoraxPath.profileColor(slot)) {
+                    if verbose || slot == 0 { appendLog("Profile \(slot + 1) color file: \(Array(b.prefix(48)).hex)") }
+                    if let c = PeakColor.firstColor(in: b) { profile.color = RGB(r: c.0, g: c.1, b: c.2) }
+                }
                 status.profiles[slot] = profile
             }
             if let b = try await readOptional(LoraxPath.activeProfile, size: 1), let i = b.first, i < 4 {
                 status.activeProfile = Int(i)
+            }
+            if let b = try await readAll(LoraxPath.lanternColor),
+               let c = PeakColor.firstColor(in: b) {
+                status.lanternColor = RGB(r: c.0, g: c.1, b: c.2)
             }
         } catch {
             handlePollError(error)
@@ -488,14 +563,41 @@ final class PuffcoController: NSObject, ObservableObject {
         }
     }
 
-    func saveProfile(slot: Int, tempC: Double, durationS: Double) {
+    func saveProfile(slot: Int, edit: ProfileEdit) {
         perform("Save profile") { c in
             let profile = c.status.profiles[slot]
-            try await c.writePath(LoraxPath.profileTemp(slot), Encode.float32(Float(tempC)))
-            let seconds = durationS.rounded()
+            try await c.writePath(LoraxPath.profileTemp(slot), Encode.float32(Float(edit.tempC)))
+            let seconds = edit.durationS.rounded()
             let timeBytes = profile.durationIsFloat ? Encode.float32(Float(seconds)) : Encode.uint32(UInt32(seconds))
             try await c.writePath(LoraxPath.profileTime(slot), timeBytes)
+            if let d = edit.boostTempDeltaC {
+                try await c.writePath(LoraxPath.profileBoostTemp(slot), Encode.float32(Float(d)))
+            }
+            if let t = edit.boostTimeS {
+                try await c.writePath(LoraxPath.profileBoostTime(slot), Encode.float32(Float(t.rounded())))
+            }
+            if let color = edit.color, color != profile.color {
+                try await c.writeAll(LoraxPath.profileColor(slot), PeakColor.solidPayload(r: color.r, g: color.g, b: color.b))
+            }
             await c.refreshProfiles()
+        }
+    }
+
+    /// -1 turns Ready Mode off; 0...3 picks the profile that starts when the Peak leaves the Power Dock.
+    func setReadyMode(_ profile: Int) {
+        perform("Ready Mode") { c in
+            let value: Float = profile < 0 ? 4_294_967_295 : Float(profile)
+            if try await c.writePath(LoraxPath.readyMode, Encode.float32(value)) {
+                c.status.readyModeProfile = profile
+            }
+        }
+    }
+
+    func setLanternColor(_ color: RGB) {
+        perform("Lantern color") { c in
+            if try await c.writeAll(LoraxPath.lanternColor, PeakColor.solidPayload(r: color.r, g: color.g, b: color.b)) {
+                c.status.lanternColor = color
+            }
         }
     }
 

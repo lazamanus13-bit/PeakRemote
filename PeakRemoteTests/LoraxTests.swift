@@ -99,4 +99,24 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(PuffcoInfo.revisionString(22), "AA")
         XCTAssertEqual(PuffcoInfo.revisionString(43), "BA")
     }
+
+    func testSolidColorPayloadMatchesPythonCBOR() {
+        // cbor2.dumps({'lamp': {'name': 'solid', 'param': {'color': b'\\xff\\x00\\x00'}}}, canonical=True)
+        XCTAssertEqual(PeakColor.solidPayload(r: 0xFF, g: 0, b: 0).hex,
+                       "a1646c616d70a2646e616d6565736f6c696465706172616da165636f6c6f7243ff0000")
+        XCTAssertEqual(PeakColor.solidPayload(r: 0x12, g: 0xAB, b: 0xEF).hex,
+                       "a1646c616d70a2646e616d6565736f6c696465706172616da165636f6c6f724312abef")
+    }
+
+    func testColorRoundTrip() {
+        let payload = PeakColor.solidPayload(r: 1, g: 2, b: 3)
+        let c = PeakColor.firstColor(in: payload)
+        XCTAssertEqual(c?.0, 1); XCTAssertEqual(c?.1, 2); XCTAssertEqual(c?.2, 3)
+        XCTAssertNil(PeakColor.firstColor(in: [0xFF, 0x00]))
+    }
+
+    func testReadyModeOffEncoding() {
+        // The official app writes 4294967295 into a float32 register for "off".
+        XCTAssertEqual(Encode.float32(4_294_967_295).hex, "0000804f")
+    }
 }

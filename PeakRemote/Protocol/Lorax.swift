@@ -115,7 +115,28 @@ enum LoraxPath {
     static let lantern         = "/p/app/ltrn/cmd"
     static let ledBrightness   = "/u/app/ui/lbrt"
 
+    // Settings and stats (names from the official app's register map)
+    static let readyMode       = "/u/app/rdym/hc"   // float32 profile index, 4294967295 = off
+    static let maxBatterySoc   = "/u/bat/msoc"      // float32 %, charge limit
+    static let lowBatteryWarn  = "/u/app/lbws"      // float32 %
+    static let batteryVolts    = "/p/bat/volt"      // float32 V
+    static let batteryTemp     = "/p/bat/temp"      // float32 °C
+    static let chargeSource    = "/p/bat/chg/src"   // uint8
+    static let chargeTimeToFull = "/p/bat/chg/etf"  // float32 s
+    static let totalHeatTime   = "/p/app/odom/0/tm" // total heat-cycle time
+    static let tripDabs        = "/p/app/odom/1/nc"
+    static let tripHeatTime    = "/p/app/odom/1/tm"
+    static let dabsPerDay      = "/p/app/info/dpd"  // float32
+    static let dabsRemaining   = "/p/app/info/drem" // float32, on current charge
+    static let lanternColor    = "/p/app/ltrn/colr" // CBOR color file
+    static let lanternTime     = "/p/app/ltrn/time" // float32 s
+    static let lanternRemaining = "/p/app/ltrn/remt" // float32 s
+
     static func profileName(_ slot: Int) -> String { "/u/app/hc/\(slot)/name" }
+    static func profileBoostTemp(_ slot: Int) -> String { "/u/app/hc/\(slot)/btmp" } // float32 °C delta
+    static func profileBoostTime(_ slot: Int) -> String { "/u/app/hc/\(slot)/btim" } // float32 s
+    static func profileIntensity(_ slot: Int) -> String { "/u/app/hc/\(slot)/intn" } // float32
+    static func profileColor(_ slot: Int) -> String { "/u/app/hc/\(slot)/colr" }     // CBOR color file
     static func profileTemp(_ slot: Int) -> String { "/u/app/hc/\(slot)/temp" }
     static func profileTime(_ slot: Int) -> String { "/u/app/hc/\(slot)/time" }
 }
@@ -153,6 +174,12 @@ enum Decode {
 
     static func float32(_ b: [UInt8]) -> Float? {
         uint32(b).map { Float(bitPattern: $0) }
+    }
+
+    /// A float32 that is a real number (not NaN or infinity).
+    static func finiteFloat(_ b: [UInt8]) -> Double? {
+        guard let f = float32(b), f.isFinite else { return nil }
+        return Double(f)
     }
 
     /// NUL-terminated / padded UTF-8 string.

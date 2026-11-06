@@ -43,6 +43,32 @@ enum ChamberLabel {
     }
 }
 
+/// Values from the profile editor.
+struct ProfileEdit {
+    var tempC: Double
+    var durationS: Double
+    var boostTempDeltaC: Double?
+    var boostTimeS: Double?
+    var color: RGB?
+}
+
+struct RGB: Equatable {
+    var r: UInt8
+    var g: UInt8
+    var b: UInt8
+}
+
+enum ChargeSourceLabel {
+    static func name(_ raw: UInt8?) -> String? {
+        switch raw {
+        case 0?: return "USB-C"
+        case 1?: return "Wireless (Qi)"
+        case 2?: return "Power Dock"
+        default: return nil
+        }
+    }
+}
+
 enum ChargeLabel {
     static func name(_ raw: UInt8?) -> String? {
         guard let raw else { return nil }
@@ -64,6 +90,10 @@ struct HeatProfile: Identifiable, Equatable {
     var durationS: Double?
     /// Whether the device stored the duration as float32 (true) or uint32 (false).
     var durationIsFloat = true
+    var boostTempDeltaC: Double?
+    var boostTimeS: Double?
+    var intensity: Double?
+    var color: RGB?
 
     var id: Int { slot }
     var displayName: String { name ?? "Profile \(slot + 1)" }
@@ -92,6 +122,24 @@ struct DeviceStatus: Equatable {
     var stealth: Bool?
     var lantern = false
     var brightness: UInt8?
+    var lanternColor: RGB?
+    var lanternRemainingS: Double?
+
+    /// nil = unknown, -1 = off, 0...3 = profile that starts when lifted off the Power Dock.
+    var readyModeProfile: Int?
+
+    var batteryVolts: Double?
+    var batteryTempC: Double?
+    var chargeSourceRaw: UInt8?
+    var chargeTimeToFullS: Double?
+    var maxBatteryPct: Double?
+    var lowBatteryWarnPct: Double?
+
+    var totalHeatTimeS: Double?
+    var tripDabs: Int?
+    var tripHeatTimeS: Double?
+    var dabsPerDay: Double?
+    var dabsRemaining: Double?
 
     var remainingS: Double? {
         guard let e = elapsedS, let t = totalS else { return nil }

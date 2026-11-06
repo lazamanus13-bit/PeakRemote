@@ -7,6 +7,7 @@ struct DeviceView: View {
     @AppStorage("useCelsius") private var useCelsius = false
     @State private var editingProfile: HeatProfile?
     @State private var brightness: Double = 128
+    @State private var lanternColor: Color = .orange
     @State private var showLog = false
 
     private var ready: Bool { c.phase == .ready }
@@ -27,7 +28,10 @@ struct DeviceView: View {
                             .frame(maxWidth: .infinity)
                             VStack(spacing: 20) {
                                 profiles
+                                readyMode
                                 lights
+                                stats
+                                battery
                                 info
                             }
                             .frame(maxWidth: .infinity)
@@ -43,7 +47,10 @@ struct DeviceView: View {
 
                         controls
                         profiles
+                        readyMode
                         lights
+                        stats
+                        battery
                         info
                     }
                     .frame(maxWidth: 600)
@@ -67,8 +74,8 @@ struct DeviceView: View {
             }
         }
         .sheet(item: $editingProfile) { profile in
-            ProfileEditView(profile: profile, celsius: useCelsius) { tempC, seconds in
-                c.saveProfile(slot: profile.slot, tempC: tempC, durationS: seconds)
+            ProfileEditView(profile: profile, celsius: useCelsius) { edit in
+                c.saveProfile(slot: profile.slot, edit: edit)
             }
         }
         .sheet(isPresented: $showLog) {
@@ -86,6 +93,9 @@ struct DeviceView: View {
         }
         .onChange(of: c.status.brightness) { value in
             if let value { brightness = Double(value) }
+        }
+        .onChange(of: c.status.lanternColor) { value in
+            if let value { lanternColor = value.color }
         }
     }
 
@@ -147,11 +157,20 @@ struct DeviceView: View {
                 get: { c.status.lantern },
                 set: { c.setLantern($0) }
             ))
+            HStack {
+                ColorPicker("Lantern color", selection: $lanternColor, supportsOpacity: false)
+                Button("Set") { c.setLanternColor(RGB(lanternColor)) }
+                    .buttonStyle(.bordered)
+            }
+            if c.status.lantern, let left = c.status.lanternRemainingS, left > 0 {
+                InfoRow(label: "Lantern time left", value: Fmt.duration(left))
+            }
             VStack(alignment: .leading, spacing: 6) {
                 Text("Brightness")
                 HStack {
                     Image(systemName: "sun.min")
-                    Slider(value: $brightness, in: 0...255, onEditingChanged: { editing in
+                    // The official app never goes below 38.25 / 255.
+                    Slider(value: $brightness, in: 38...255, onEditingChanged: { editing in
                         if !editing { c.setBrightness(UInt8(brightness.rounded())) }
                     })
                     Image(systemName: "sun.max.fill")
@@ -161,11 +180,54 @@ struct DeviceView: View {
         .disabled(!ready)
     }
 
+    private var readyMode: some View {
+        Card("Ready Mode") {
+            Picker("Start when lifted off the dock", selection: Binding(
+                get: { c.status.readyModeProfile ?? -1 },
+                set: { c.setReadyMode($0) }
+            )) {
+                Text("Off").tag(-1)
+                ForEach(c.status.profiles) { p in
+                    Text(p.displayName).tag(p.slot)
+                }
+            }
+            .pickerStyle(.menu)
+            Text("With a Power Dock, your Peak starts the chosen profile as soon as you lift it off.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .disabled(!ready)
+    }
+
+    private var stats: some View {
+        Card("Stats") {
+            InfoRow(label: "Lifetime dabs", value: c.status.lifetimeDabs.map { "\($0)" } ?? "—")
+            InfoRow(label: "Total heating time", value: c.status.totalHeatTimeS.map(Fmt.duration) ?? "—")
+            InfoRow(label: "Trip dabs", value: c.status.tripDabs.map { "\($0)" } ?? "—")
+            InfoRow(label: "Dabs per day", value: c.status.dabsPerDay.map { String(format: "%.1f", $0) } ?? "—")
+            InfoRow(label: "Dabs left on this charge", value: c.status.dabsRemaining.map { "~\(Int($0.rounded()))" } ?? "—")
+        }
+    }
+
+    private var battery: some View {
+        Card("Battery") {
+            InfoRow(label: "Charge", value: batteryText)
+            if let source = ChargeSourceLabel.name(c.status.chargeSourceRaw), ChargeLabel.isCharging(c.status.chargeRaw) {
+                InfoRow(label: "Charging from", value: source)
+            }
+            if ChargeLabel.isCharging(c.status.chargeRaw), let etf = c.status.chargeTimeToFullS, etf > 0 {
+                InfoRow(label: "Time to full", value: Fmt.duration(etf))
+            }
+            InfoRow(label: "Voltage", value: c.status.batteryVolts.map { String(format: "%.2f V", $0) } ?? "—")
+            InfoRow(label: "Temperature", value: Temp.format(c.status.batteryTempC, celsius: useCelsius))
+            InfoRow(label: "Charge limit", value: c.status.maxBatteryPct.map { "\(Int($0.rounded()))%" } ?? "—")
+            InfoRow(label: "Low battery warning", value: c.status.lowBatteryWarnPct.map { "\(Int($0.rounded()))%" } ?? "—")
+        }
+    }
+
     private var info: some View {
         Card("Device") {
-            InfoRow(label: "Battery", value: batteryText)
             InfoRow(label: "Chamber", value: ChamberLabel.name(c.status.chamberRaw))
-            InfoRow(label: "Lifetime dabs", value: c.status.lifetimeDabs.map { "\($0)" } ?? "—")
             InfoRow(label: "Model", value: c.status.model ?? "—")
             InfoRow(label: "Firmware", value: c.status.firmware ?? "—")
             InfoRow(label: "Serial", value: c.status.serial ?? "—")
@@ -273,9 +335,14 @@ struct ProfileTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(profile.displayName)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                if let color = profile.color {
+                    Circle().fill(color.color).frame(width: 10, height: 10)
+                }
+                Text(profile.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+            }
             Text(Temp.format(profile.tempC, celsius: celsius))
                 .font(.title2.weight(.bold).monospacedDigit())
             Text(profile.durationS.map { "\(Int($0.rounded()))s" } ?? "—")
@@ -366,5 +433,30 @@ struct PhaseBanner: View {
         }
         .padding()
         .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+// MARK: - Helpers
+
+enum Fmt {
+    static func duration(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded())
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return "\(s / 60)m \(s % 60)s" }
+        let h = s / 3600, m = (s % 3600) / 60
+        return h >= 100 ? "\(h)h" : "\(h)h \(m)m"
+    }
+}
+
+extension RGB {
+    var color: Color {
+        Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
+    }
+
+    init(_ color: Color) {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        func byte(_ v: CGFloat) -> UInt8 { UInt8(max(0, min(255, (v * 255).rounded()))) }
+        self.init(r: byte(red), g: byte(green), b: byte(blue))
     }
 }

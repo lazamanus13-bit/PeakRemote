@@ -4,23 +4,38 @@ import UIKit
 struct ProfileEditView: View {
     let profile: HeatProfile
     let celsius: Bool
-    let onSave: (_ tempC: Double, _ seconds: Double) -> Void
+    let onSave: (ProfileEdit) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var tempF: Double
     @State private var seconds: Double
+    @State private var boostF: Double
+    @State private var boostSeconds: Double
+    @State private var color: Color
+    @State private var colorChanged = false
 
-    static let tempRangeF: ClosedRange<Double> = 400...620
+    // Limits from the official app.
+    static let tempRangeF: ClosedRange<Double> = 400...644
     static let durationRange: ClosedRange<Double> = 15...120
+    static let boostRangeF: ClosedRange<Double> = 1...36
+    static let boostTimeRange: ClosedRange<Double> = 1...60
 
-    init(profile: HeatProfile, celsius: Bool, onSave: @escaping (_ tempC: Double, _ seconds: Double) -> Void) {
+    init(profile: HeatProfile, celsius: Bool, onSave: @escaping (ProfileEdit) -> Void) {
         self.profile = profile
         self.celsius = celsius
         self.onSave = onSave
+        func clamp(_ v: Double, _ r: ClosedRange<Double>) -> Double { min(max(v, r.lowerBound), r.upperBound) }
         let f = profile.tempC.map { Temp.f(fromC: $0) } ?? 500
-        _tempF = State(initialValue: min(max(f.rounded(), Self.tempRangeF.lowerBound), Self.tempRangeF.upperBound))
-        let s = profile.durationS ?? 45
-        _seconds = State(initialValue: min(max(s.rounded(), Self.durationRange.lowerBound), Self.durationRange.upperBound))
+        _tempF = State(initialValue: clamp(f.rounded(), Self.tempRangeF))
+        _seconds = State(initialValue: clamp((profile.durationS ?? 45).rounded(), Self.durationRange))
+        let boostF = (profile.boostTempDeltaC ?? Temp.c(fromF: 42) - Temp.c(fromF: 32)) * 9 / 5
+        _boostF = State(initialValue: clamp(boostF.rounded(), Self.boostRangeF))
+        _boostSeconds = State(initialValue: clamp((profile.boostTimeS ?? 15).rounded(), Self.boostTimeRange))
+        _color = State(initialValue: profile.color?.color ?? .orange)
+    }
+
+    private var boostLabel: String {
+        celsius ? "+\(Int((boostF * 5 / 9).rounded()))°C" : "+\(Int(boostF))°F"
     }
 
     var body: some View {
@@ -31,13 +46,33 @@ struct ProfileEditView: View {
                         .font(.system(size: 44, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .frame(maxWidth: .infinity)
-                    Slider(value: $tempF, in: Self.tempRangeF, step: 5)
+                    Slider(value: $tempF, in: Self.tempRangeF, step: 1)
+                    Stepper("Fine-tune", value: $tempF, in: Self.tempRangeF, step: 1)
                 }
                 Section("Duration") {
                     Stepper("\(Int(seconds)) seconds", value: $seconds, in: Self.durationRange, step: 5)
                 }
                 Section {
-                    Text("This writes to your Peak. Profile editing is the least-tested part of the app, so check the new values on the device after saving.")
+                    Stepper("Temperature \(boostLabel)", value: $boostF, in: Self.boostRangeF, step: 1)
+                    Stepper("Time +\(Int(boostSeconds))s", value: $boostSeconds, in: Self.boostTimeRange, step: 1)
+                } header: {
+                    Text("Boost")
+                } footer: {
+                    Text("What one press of Boost adds during this profile's session.")
+                }
+                Section("Color") {
+                    ColorPicker("Profile color", selection: Binding(
+                        get: { color },
+                        set: { color = $0; colorChanged = true }
+                    ), supportsOpacity: false)
+                }
+                if let intensity = profile.intensity {
+                    Section("Vapor intensity") {
+                        InfoRow(label: "Current value", value: String(format: "%.2f", intensity))
+                    }
+                }
+                Section {
+                    Text("Saving writes these settings to your Peak. Color sets a single solid color; animated color effects from the official app aren't supported yet.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -50,7 +85,13 @@ struct ProfileEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        onSave(Temp.c(fromF: tempF), seconds)
+                        onSave(ProfileEdit(
+                            tempC: Temp.c(fromF: tempF),
+                            durationS: seconds,
+                            boostTempDeltaC: boostF * 5 / 9,
+                            boostTimeS: boostSeconds,
+                            color: colorChanged ? RGB(color) : nil
+                        ))
                         dismiss()
                     }
                 }
