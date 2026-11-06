@@ -167,7 +167,7 @@ final class LoraxTests: XCTestCase {
         let pointer = look.pointerBytes(slot: 2)
         XCTAssertEqual(pointer.count, 8)
         XCTAssertEqual(pointer[3], 1)
-        XCTAssertEqual(pointer[6], 0x22)
+        XCTAssertEqual(pointer[6], 0xAA) // user list 2 is addressed as index 8 + 2
         XCTAssertEqual(pointer[7], 10)
         XCTAssertGreaterThan(pointer[1], 0)
         XCTAssertEqual(pointer[5], 0)

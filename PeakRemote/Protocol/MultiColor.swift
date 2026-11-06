@@ -3,7 +3,8 @@ import Foundation
 /// Multi-color lighting.
 ///
 /// The Peak's 8-byte color can point at a color list instead of holding one color:
-///   [brightness, speed, lumaAnim, 1, pllNum, pllDenom, (offsetSlot << 4) | colorSlot, colorCount]
+///   [brightness, speed, lumaAnim, 1, pllNum, pllDenom, (offsetIndex << 4) | colorIndex, colorCount]
+///   where index 0-7 are the firmware's own lists and 8-15 are user lists 0-7 (index = 8 + slot).
 /// - Color lists live in /u/app/led/ca/0...7 as [R, G, B, 0] per entry (up to 32 entries).
 /// - Offset lists live in /u/app/led/oa/0...7 as 20 little-endian uint32 values, one per LED:
 ///   where in the color loop that LED starts, in 1/4096ths of a list entry.
@@ -89,11 +90,12 @@ struct MultiColorLook: Equatable {
         return values.flatMap { Encode.uint32($0) }
     }
 
-    /// The 8-byte color that points the Peak at a color list and offset list in `slot`.
+    /// The 8-byte color that points the Peak at the user color and offset lists in `slot` (0-7).
     func pointerBytes(slot: UInt8, brightness: UInt8 = 255) -> [UInt8] {
         let count = UInt8(entryCount)
         let phaseLockDenominator: UInt8 = speedByte > 0 ? 0 : 1
-        return [brightness, speedByte, 0, 1, 0, phaseLockDenominator, (slot << 4) | slot, count < 32 ? count : 0]
+        let index = MultiColorSlot.userListOffset + (slot & 0x07)
+        return [brightness, speedByte, 0, 1, 0, phaseLockDenominator, (index << 4) | index, count < 32 ? count : 0]
     }
 
     /// Blends in linear light so mixes stay bright instead of turning muddy.
@@ -114,10 +116,13 @@ struct MultiColorLook: Equatable {
 }
 
 enum MultiColorSlot {
-    /// Profiles use slots 0-3, the lantern 4, live preview 5.
-    static func profile(_ index: Int) -> UInt8 { UInt8(index) }
-    static let lantern: UInt8 = 4
-    static let preview: UInt8 = 5
+    /// Pointer indices 8-15 address user lists 0-7 (the official app's NVM user-array offset).
+    static let userListOffset: UInt8 = 8
+    /// Same slots the official app uses: profiles 1-4, lantern 5 (0 and 6 are its temporary/alternate slots).
+    static func profile(_ index: Int) -> UInt8 { UInt8(index + 1) }
+    static let lantern: UInt8 = 5
+    /// Unused by the official app, so previews never overwrite a saved look.
+    static let preview: UInt8 = 7
 }
 
 extension PeakColor {
