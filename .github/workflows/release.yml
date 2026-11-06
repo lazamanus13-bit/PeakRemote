@@ -1,0 +1,55 @@
+# Manually triggered: publishes the .ipa from an earlier successful build run as a named release,
+# so a release ships the exact binary that was tested.
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build run ID whose PeakRemote-ipa artifact to publish"
+        required: true
+      commit:
+        description: "Full commit SHA that run was built from"
+        required: true
+      tag:
+        description: "Release tag, e.g. beta1"
+        required: true
+      prerelease:
+        description: "Mark as pre-release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+          COMMIT: ${{ inputs.commit }}
+          TAG: ${{ inputs.tag }}
+          PRE: ${{ inputs.prerelease }}
+        run: |
+          set -e
+          gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n PeakRemote-ipa -D out
+          ls -la out
+          unzip -l out/PeakRemote.ipa | grep -q "Payload/PeakRemote.app/Info.plist"
+          unzip -l out/PeakRemote.ipa | grep -q "Payload/PeakRemote.app/PeakRemote$"
+          FLAG=""; [ "$PRE" = "true" ] && FLAG="--prerelease"
+          gh release create "$TAG" out/PeakRemote.ipa -R "$GITHUB_REPOSITORY" \
+            --target "$COMMIT" $FLAG \
+            --title "Peak Remote $TAG" \
+            --notes "Built from commit ${COMMIT:0:7}. Download PeakRemote.ipa and install it with Sideloadly.
+
+          - Connects to Peak Pro over Bluetooth (pairs and unlocks automatically)
+          - Live temperature, state, session countdown, battery
+          - Start / Boost / Stop heat
+          - View, select and edit the 4 heat profiles
+          - Stealth, lantern and LED brightness
+          - iPhone and iPad, iOS 15.4+ (iOS 15 has a known launch crash)
+          - Debug log (ladybug icon)"
