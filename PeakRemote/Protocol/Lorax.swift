@@ -1,0 +1,200 @@
+import Foundation
+import CoreBluetooth
+import CryptoKit
+
+/// The Puffco "Lorax" BLE protocol, ported from the community projects
+/// puffco-py (SoyMilkIsOk) and PuffcoBLE (Fr0st3h).
+///
+/// Every request is written to the Command characteristic as:
+///   [seq lo][seq hi][opcode][body...]
+/// and the device answers on the Reply characteristic with:
+///   [seq lo][seq hi][status][payload...]
+enum Lorax {
+    // MARK: GATT
+
+    static let serviceUUID = CBUUID(string: "E276967F-EA8A-478A-A92E-D78F5DD15DD5")
+    static let commandUUID = CBUUID(string: "60133D5C-5727-4F2C-9697-D842C5292A3C")
+    static let replyUUID   = CBUUID(string: "8DC5EC05-8F7D-45AD-99DB-3FBDE65DBD9C")
+    static let eventUUID   = CBUUID(string: "43312CD1-7D34-46CE-A7D3-0A98FD9B4CB8")
+    static let versionUUID = CBUUID(string: "05434BCA-CC7F-4EF6-BBB3-B1C520B9800C")
+
+    /// Pre-Lorax firmware used a different flat GATT layout. Not supported here.
+    static let legacyServiceUUID = CBUUID(string: "06CAF9C0-74D3-454F-9BE9-E30CD999C17A")
+
+    static let deviceInfoServiceUUID = CBUUID(string: "180A")
+    static let modelNumberUUID = CBUUID(string: "2A24")
+    static let serialNumberUUID = CBUUID(string: "2A25")
+    static let firmwareUUID = CBUUID(string: "2A26")
+
+    // MARK: Opcodes
+
+    enum Opcode: UInt8 {
+        case getAccessSeed = 0x00
+        case unlockAccess  = 0x01
+        case readShort     = 0x10
+        case writeShort    = 0x11
+    }
+
+    // MARK: Authentication
+
+    /// Lorax handshake key (base64 "ZMZFYlbyb1scoSc3pd1x+w==").
+    static let handshakeKey: [UInt8] = [
+        0x64, 0xC6, 0x45, 0x62, 0x56, 0xF2, 0x6F, 0x5B,
+        0x1C, 0xA1, 0x27, 0x37, 0xA5, 0xDD, 0x71, 0xFB,
+    ]
+
+    /// token = SHA256(handshakeKey ++ seed[0..<16])[0..<16]
+    static func authToken(seed: [UInt8], key: [UInt8] = handshakeKey) -> [UInt8]? {
+        guard seed.count >= 16 else { return nil }
+        let input = key + Array(seed.prefix(16))
+        let digest = SHA256.hash(data: Data(input))
+        return Array(Array(digest).prefix(16))
+    }
+
+    // MARK: Packets
+
+    static func command(seq: UInt16, opcode: Opcode, body: [UInt8] = []) -> Data {
+        Data([UInt8(seq & 0xFF), UInt8(seq >> 8), opcode.rawValue] + body)
+    }
+
+    /// READ_SHORT body: [offset u16][size u16][path utf8]
+    static func readShortBody(path: String, offset: UInt16 = 0, size: UInt16) -> [UInt8] {
+        Encode.uint16(offset) + Encode.uint16(size) + Array(path.utf8)
+    }
+
+    /// WRITE_SHORT body: [offset u16][flags u8][path utf8][0x00][value...]
+    static func writeShortBody(path: String, value: [UInt8], offset: UInt16 = 0, flags: UInt8 = 0) -> [UInt8] {
+        Encode.uint16(offset) + [flags] + Array(path.utf8) + [0x00] + value
+    }
+
+    struct Reply: Equatable {
+        let seq: UInt16
+        let status: UInt8
+        let payload: [UInt8]
+    }
+
+    static func parseReply(_ data: Data) -> Reply? {
+        let b = [UInt8](data)
+        guard b.count >= 3 else { return nil }
+        return Reply(
+            seq: UInt16(b[0]) | (UInt16(b[1]) << 8),
+            status: b[2],
+            payload: Array(b[3...])
+        )
+    }
+}
+
+// MARK: - Virtual file system paths
+
+enum LoraxPath {
+    static let operatingState = "/p/app/stat/id"
+    static let elapsed        = "/p/app/stat/elap"
+    static let total          = "/p/app/stat/tott"
+    static let modeCommand    = "/p/app/mc"
+
+    static let heaterTemp     = "/p/app/htr/temp"
+    static let heaterTarget   = "/p/app/htr/ttag"
+    static let chamberType    = "/p/htr/chmt"
+
+    // The two libraries disagree on these, so the app tries both.
+    static let batteryCapacity = "/p/bat/cap"      // PuffcoBLE (float32 %)
+    static let batterySoc      = "/p/bat/soc"      // puffco-py
+    static let chargeState     = "/p/bat/chg/stat"
+    static let totalDabs       = "/p/app/info/dtot" // PuffcoBLE (uint32)
+    static let odometerDabs    = "/p/app/odom/0/nc" // puffco-py
+
+    static let deviceName      = "/u/sys/name"
+    static let serial          = "/p/sys/hw/ser"
+    static let activeProfile   = "/p/app/hcs"
+    static let stealth         = "/u/app/ui/stlm"
+    static let lantern         = "/p/app/ltrn/cmd"
+    static let ledBrightness   = "/u/app/ui/lbrt"
+
+    static func profileName(_ slot: Int) -> String { "/u/app/hc/\(slot)/name" }
+    static func profileTemp(_ slot: Int) -> String { "/u/app/hc/\(slot)/temp" }
+    static func profileTime(_ slot: Int) -> String { "/u/app/hc/\(slot)/time" }
+}
+
+/// Values written to `/p/app/mc`.
+enum ModeCommand: UInt8 {
+    case sleep = 1
+    case showBattery = 5
+    case heatStart = 7
+    case heatAbort = 8
+    case heatBoost = 9
+}
+
+// MARK: - Encoding / decoding
+
+enum Encode {
+    static func uint16(_ v: UInt16) -> [UInt8] { [UInt8(v & 0xFF), UInt8(v >> 8)] }
+
+    static func uint32(_ v: UInt32) -> [UInt8] {
+        [UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]
+    }
+
+    static func float32(_ v: Float) -> [UInt8] { uint32(v.bitPattern) }
+}
+
+enum Decode {
+    static func uint32(_ b: [UInt8]) -> UInt32? {
+        guard b.count >= 4 else { return nil }
+        return UInt32(b[0]) | (UInt32(b[1]) << 8) | (UInt32(b[2]) << 16) | (UInt32(b[3]) << 24)
+    }
+
+    static func int32(_ b: [UInt8]) -> Int32? {
+        uint32(b).map { Int32(bitPattern: $0) }
+    }
+
+    static func float32(_ b: [UInt8]) -> Float? {
+        uint32(b).map { Float(bitPattern: $0) }
+    }
+
+    /// NUL-terminated / padded UTF-8 string.
+    static func string(_ b: [UInt8]) -> String? {
+        let bytes = b.prefix { $0 != 0 }
+        let s = String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? nil : s
+    }
+
+    /// Temperature in °C. Peak Pro sends float32 °C; Proxy may send int32 tenths of °C.
+    static func temperatureC(_ b: [UInt8]) -> Double? {
+        if let f = float32(b), f.isFinite, f >= 5, f <= 500 { return Double(f) }
+        if let i = int32(b), (50...5000).contains(i) { return Double(i) / 10 }
+        return nil
+    }
+
+    /// Seconds, sent as either float32 or uint32 depending on firmware.
+    /// `isFloat` records which encoding was seen so writes can match it.
+    static func seconds(_ b: [UInt8]) -> (value: Double, isFloat: Bool)? {
+        if let f = float32(b), f.isFinite, f >= 0.5, f <= 1_000_000 { return (Double(f), true) }
+        if let u = uint32(b), u <= 1_000_000 { return (Double(u), false) }
+        return nil
+    }
+
+    /// Battery percent from a single byte, float32 or uint32.
+    static func battery(_ b: [UInt8]) -> Int? {
+        if b.count == 1 { return min(100, Int(b[0])) }
+        if let f = float32(b), f.isFinite, f >= 1, f <= 100 { return Int(f.rounded()) }
+        if let u = uint32(b) {
+            if u <= 100 { return Int(u) }
+            if u <= 10_000 { return min(100, Int((Double(u) / 100).rounded())) }
+        }
+        return nil
+    }
+
+    /// Counters (dabs) sent as uint32, float32, uint16 or uint8.
+    static func count(_ b: [UInt8]) -> Int? {
+        if b.count >= 4 {
+            if let f = float32(b), f.isFinite, f >= 1, f < 10_000_000, f == f.rounded() { return Int(f) }
+            return uint32(b).map { Int($0) }
+        }
+        if b.count == 2 { return Int(UInt16(b[0]) | (UInt16(b[1]) << 8)) }
+        if b.count == 1 { return Int(b[0]) }
+        return nil
+    }
+}
+
+extension Array where Element == UInt8 {
+    var hex: String { map { String(format: "%02x", $0) }.joined() }
+}
