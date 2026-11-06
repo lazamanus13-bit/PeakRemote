@@ -316,6 +316,7 @@ struct TemperatureDial: View {
                 Text(Temp.format(status.tempC, celsius: celsius))
                     .font(.system(size: 64 * scale, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
                     .animation(.default, value: status.tempC)
                 if let target = status.targetC {
                     Text("Target \(Temp.format(target, celsius: celsius))")
