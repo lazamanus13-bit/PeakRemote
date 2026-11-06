@@ -30,8 +30,8 @@ struct ProfileEditView: View {
     static let boostTimeRange: ClosedRange<Double> = 1...60
 
     init(profile: HeatProfile, celsius: Bool, allowXL: Bool,
-         onSave: @escaping (ProfileEdit) -> Void,
          showEffects: Bool,
+         onSave: @escaping (ProfileEdit) -> Void,
          onPreview: @escaping (RGB?, LightEffect?) -> Void) {
         self.showEffects = showEffects
         _effect = State(initialValue: profile.lightEffect ?? .steady)

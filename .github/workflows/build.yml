@@ -57,10 +57,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          NOTES="Built from commit ${GITHUB_SHA::7}. Download PeakRemote.ipa below and drag it into Sideloadly."
+          # Lines starting with "Request:" in the commit message hold the request that led to this build.
+          REQ=$(git log -1 --pretty=%B | sed -n 's/^Request: //p')
+          if [ -n "$REQ" ]; then
+            NOTES="$NOTES
+
+          Requested: $REQ"
+          fi
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest PeakRemote.ipa \
             --title "Peak Remote (latest build)" \
-            --notes "Built from commit ${GITHUB_SHA::7}. Download PeakRemote.ipa below and drag it into Sideloadly."
+            --notes "$NOTES"
 
       - name: Run protocol tests
         continue-on-error: true
