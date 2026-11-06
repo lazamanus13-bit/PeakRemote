@@ -1,0 +1,61 @@
+# Manually triggered: builds for the simulator, launches the app, and prints any crash report.
+name: Launch test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  launch:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate project
+        run: brew install xcodegen && xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild build -project PeakRemote.xcodeproj -scheme PeakRemote \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          test -d build/Build/Products/Debug-iphonesimulator/PeakRemote.app
+
+      - name: Launch on every available iOS runtime
+        run: |
+          xcrun simctl list runtimes
+          APP=build/Build/Products/Debug-iphonesimulator/PeakRemote.app
+          python3 - <<'EOF' > sims.txt
+          import json, subprocess
+          d = json.loads(subprocess.check_output(["xcrun","simctl","list","devices","available","-j"]))["devices"]
+          for rt, devs in d.items():
+              if "iOS" not in rt: continue
+              for dev in devs:
+                  if dev["name"].startswith("iPhone"):
+                      print(rt.split(".")[-1], dev["udid"]); break
+          EOF
+          cat sims.txt
+          while read RT UDID; do
+            echo "================ $RT ($UDID) ================"
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b >/dev/null
+            xcrun simctl install "$UDID" "$APP"
+            xcrun simctl launch "$UDID" com.example.PeakRemote || echo "LAUNCH COMMAND FAILED"
+            sleep 10
+            if xcrun simctl spawn "$UDID" launchctl list | grep -q "com.example.PeakRemote"; then
+              echo "RESULT $RT: app still running after 10s"
+            else
+              echo "RESULT $RT: app NOT running (crashed?)"
+            fi
+            xcrun simctl shutdown "$UDID" || true
+          done < sims.txt
+
+      - name: Print crash reports
+        if: always()
+        run: |
+          ls -la ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i peak || echo "no PeakRemote crash reports"
+          for f in ~/Library/Logs/DiagnosticReports/*PeakRemote*; do
+            [ -f "$f" ] || continue
+            echo "######## $f"
+            head -c 12000 "$f"
+          done
