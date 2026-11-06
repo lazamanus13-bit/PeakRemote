@@ -140,4 +140,13 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(VaporLevel.nearest(0.49), .high)
         XCTAssertEqual(VaporLevel.nearest(1.6), .xl)
     }
+
+    func testLightEffectInColor() {
+        // Breathing (LumaAnimation 5) goes in byte 4 of the 8-byte color.
+        let bytes = PeakColor.payload(RGB(r: 255, g: 0, b: 128), format: .api2, effect: .breathing)
+        XCTAssertEqual(bytes, [255, 0, 128, 0, 5, 0, 0, 0])
+        XCTAssertEqual(PeakColor.effect(in: bytes), .breathing)
+        XCTAssertNil(PeakColor.effect(in: PeakColor.api2None))
+        XCTAssertEqual(LightEffect.circlingSlow.rawValue, 21)
+    }
 }

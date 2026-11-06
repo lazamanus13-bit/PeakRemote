@@ -170,14 +170,15 @@ enum PeakColorFormat {
 
 enum PeakColor {
     /// Solid color in the 8-byte format (matches the official app's RgbtColor.fromRgb).
-    static func api2Solid(r: UInt8, g: UInt8, b: UInt8) -> [UInt8] { [r, g, b, 0, 0, 0, 0, 0] }
+    /// `anim` is the firmware's brightness animation (LightEffect), 0 = keep current.
+    static func api2Solid(r: UInt8, g: UInt8, b: UInt8, anim: UInt8 = 0) -> [UInt8] { [r, g, b, 0, anim, 0, 0, 0] }
 
     /// "No color" in the 8-byte format (RgbtColor.fromNull); clears the live preview.
     static let api2None: [UInt8] = [0, 0, 0, 255, 0, 0, 0, 0]
 
-    static func payload(_ color: RGB, format: PeakColorFormat) -> [UInt8] {
+    static func payload(_ color: RGB, format: PeakColorFormat, effect: LightEffect? = nil) -> [UInt8] {
         switch format {
-        case .api2: return api2Solid(r: color.r, g: color.g, b: color.b)
+        case .api2: return api2Solid(r: color.r, g: color.g, b: color.b, anim: effect?.rawValue ?? 0)
         case .api3: return solidPayload(r: color.r, g: color.g, b: color.b)
         }
     }
@@ -190,6 +191,12 @@ enum PeakColor {
                 (.text("param"), .map([(.text("color"), .bytes([r, g, b]))])),
             ])),
         ]).encoded()
+    }
+
+    /// The brightness animation stored with a solid 8-byte color, if any.
+    static func effect(in bytes: [UInt8]) -> LightEffect? {
+        guard PeakColorFormat.detect(bytes) == .api2, bytes[3] == 0 else { return nil }
+        return LightEffect(rawValue: bytes[4])
     }
 
     /// First RGB color found in a color file, if any.

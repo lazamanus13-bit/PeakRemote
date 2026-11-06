@@ -42,9 +42,9 @@ final class PuffcoController: NSObject, ObservableObject {
     /// Firmware and model come from the Lorax file system; read them once per connection.
     private var readDeviceInfo = false
     /// Color file format this Peak uses, learned from its existing color files.
-    private var colorFormat: PeakColorFormat?
+    @Published private(set) var colorFormat: PeakColorFormat?
     /// Latest live-preview color waiting to be sent (outer nil = nothing pending, inner nil = clear).
-    private var pendingPreview: RGB??
+    private var pendingPreview: PreviewLook??
     private var previewTask: Task<Void, Never>?
 
     private var nextSeq: UInt16 = 0xFFFF
@@ -534,6 +534,7 @@ final class PuffcoController: NSObject, ObservableObject {
                     }
                     if verbose || slot == 0 { appendLog("Profile \(slot + 1) color file: \(Array(b.prefix(48)).hex)") }
                     if let c = PeakColor.firstColor(in: b) { profile.color = RGB(r: c.0, g: c.1, b: c.2) }
+                    profile.lightEffect = PeakColor.effect(in: b)
                 }
                 status.profiles[slot] = profile
             }
@@ -543,6 +544,7 @@ final class PuffcoController: NSObject, ObservableObject {
             if let b = try await readAll(LoraxPath.lanternColor),
                let c = PeakColor.firstColor(in: b) {
                 status.lanternColor = RGB(r: c.0, g: c.1, b: c.2)
+                status.lanternEffect = PeakColor.effect(in: b)
             }
         } catch {
             handlePollError(error)
@@ -592,8 +594,8 @@ final class PuffcoController: NSObject, ObservableObject {
             if let level = edit.intensity, level != profile.intensity {
                 try await c.writePath(LoraxPath.profileIntensity(slot), Encode.float32(Float(level)))
             }
-            if let color = edit.color, color != profile.color {
-                try await c.writeColor(LoraxPath.profileColor(slot), color)
+            if let color = edit.color, color != profile.color || (edit.effect != nil && edit.effect != profile.lightEffect) {
+                try await c.writeColor(LoraxPath.profileColor(slot), color, effect: edit.effect)
             }
             await c.refreshProfiles()
         }
@@ -609,19 +611,20 @@ final class PuffcoController: NSObject, ObservableObject {
         }
     }
 
-    func setLanternColor(_ color: RGB) {
+    func setLanternColor(_ color: RGB, effect: LightEffect? = nil) {
         perform("Lantern color") { c in
-            if try await c.writeColor(LoraxPath.lanternColor, color) {
+            if try await c.writeColor(LoraxPath.lanternColor, color, effect: effect) {
                 c.status.lanternColor = color
+                if let effect { c.status.lanternEffect = effect }
             }
         }
     }
 
     /// Writes a solid color in whichever format this Peak uses (8-byte by default).
     @discardableResult
-    private func writeColor(_ path: String, _ color: RGB) async throws -> Bool {
+    private func writeColor(_ path: String, _ color: RGB, effect: LightEffect? = nil) async throws -> Bool {
         let format = colorFormat ?? .api2
-        let bytes = PeakColor.payload(color, format: format)
+        let bytes = PeakColor.payload(color, format: format, effect: effect)
         if format == .api2 {
             return try await writePath(path, bytes)
         } else {
@@ -631,9 +634,9 @@ final class PuffcoController: NSObject, ObservableObject {
 
     /// Shows a color on the Peak while the user is choosing it; nil ends the preview.
     /// Sends at most ~8 updates a second and always delivers the latest one.
-    func preview(_ color: RGB?) {
+    func preview(_ color: RGB?, effect: LightEffect? = nil) {
         guard phase == .ready else { return }
-        pendingPreview = .some(color)
+        pendingPreview = .some(color.map { PreviewLook(color: $0, effect: effect) })
         guard previewTask == nil else { return }
         previewTask = Task { [weak self] in
             while let strong = self, let next = strong.pendingPreview {
@@ -649,11 +652,11 @@ final class PuffcoController: NSObject, ObservableObject {
         }
     }
 
-    private func sendPreview(_ color: RGB?) async throws {
+    private func sendPreview(_ look: PreviewLook?) async throws {
         let format = colorFormat ?? .api2
         let bytes: [UInt8]
-        if let color {
-            bytes = PeakColor.payload(color, format: format)
+        if let look {
+            bytes = PeakColor.payload(look.color, format: format, effect: look.effect)
         } else {
             bytes = format == .api2 ? PeakColor.api2None : [0xF6] // CBOR null
         }

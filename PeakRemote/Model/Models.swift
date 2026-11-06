@@ -50,7 +50,35 @@ struct ProfileEdit {
     var boostTempDeltaC: Double?
     var boostTimeS: Double?
     var color: RGB?
+    var effect: LightEffect?
     var intensity: Double?
+}
+
+/// Brightness animations built into the Peak's firmware (LumaAnimation codes).
+enum LightEffect: UInt8, CaseIterable, Identifiable {
+    case steady = 1
+    case breathing = 5
+    case rising = 6
+    case circling = 7
+    case circlingSlow = 21
+
+    var id: UInt8 { rawValue }
+
+    var name: String {
+        switch self {
+        case .steady: return "Steady"
+        case .breathing: return "Breathing"
+        case .rising: return "Rising"
+        case .circling: return "Circling"
+        case .circlingSlow: return "Circling (slow)"
+        }
+    }
+}
+
+/// A color plus animation to show live on the Peak.
+struct PreviewLook: Equatable {
+    var color: RGB
+    var effect: LightEffect?
 }
 
 /// Vapor levels and the values the official app writes to /u/app/hc/N/intn.
@@ -119,6 +147,7 @@ struct HeatProfile: Identifiable, Equatable {
     var boostTimeS: Double?
     var intensity: Double?
     var color: RGB?
+    var lightEffect: LightEffect?
 
     var id: Int { slot }
     var displayName: String { name ?? "Profile \(slot + 1)" }
@@ -148,6 +177,7 @@ struct DeviceStatus: Equatable {
     var lantern = false
     var brightness: UInt8?
     var lanternColor: RGB?
+    var lanternEffect: LightEffect?
     var lanternRemainingS: Double?
 
     /// nil = unknown, -1 = off, 0...3 = profile that starts when lifted off the Power Dock.

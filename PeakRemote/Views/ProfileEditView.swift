@@ -6,9 +6,11 @@ struct ProfileEditView: View {
     let celsius: Bool
     /// XL vapor is only offered with an XL chamber (the official app restricts it too).
     let allowXL: Bool
+    /// Firmware light effects only work with the 8-byte color format.
+    let showEffects: Bool
     let onSave: (ProfileEdit) -> Void
     /// Shows the color on the Peak while choosing; nil ends the preview.
-    let onPreview: (RGB?) -> Void
+    let onPreview: (RGB?, LightEffect?) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var tempF: Double
@@ -17,6 +19,8 @@ struct ProfileEditView: View {
     @State private var boostSeconds: Double
     @State private var color: Color
     @State private var colorChanged = false
+    @State private var effect: LightEffect
+    @State private var effectChanged = false
     @State private var vapor: VaporLevel?
 
     // Limits from the official app.
@@ -27,7 +31,10 @@ struct ProfileEditView: View {
 
     init(profile: HeatProfile, celsius: Bool, allowXL: Bool,
          onSave: @escaping (ProfileEdit) -> Void,
-         onPreview: @escaping (RGB?) -> Void) {
+         showEffects: Bool,
+         onPreview: @escaping (RGB?, LightEffect?) -> Void) {
+        self.showEffects = showEffects
+        _effect = State(initialValue: profile.lightEffect ?? .steady)
         self.profile = profile
         self.celsius = celsius
         self.allowXL = allowXL || profile.intensity.map { VaporLevel.nearest($0) == .xl } == true
@@ -76,10 +83,25 @@ struct ProfileEditView: View {
                         set: {
                             color = $0
                             colorChanged = true
-                            onPreview(RGB($0))
+                            onPreview(RGB($0), showEffects ? effect : nil)
                         }
                     ), supportsOpacity: false)
-                    Text("Your Peak shows the color live while you choose.")
+                    if showEffects {
+                        Picker("Effect", selection: Binding(
+                            get: { effect },
+                            set: {
+                                effect = $0
+                                effectChanged = true
+                                onPreview(RGB(color), $0)
+                            }
+                        )) {
+                            ForEach(LightEffect.allCases) { e in
+                                Text(e.name).tag(e)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    Text("Your Peak shows it live while you choose.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -119,7 +141,8 @@ struct ProfileEditView: View {
                             durationS: seconds,
                             boostTempDeltaC: boostF * 5 / 9,
                             boostTimeS: boostSeconds,
-                            color: colorChanged ? RGB(color) : nil,
+                            color: (colorChanged || effectChanged) ? RGB(color) : nil,
+                            effect: showEffects && (colorChanged || effectChanged) ? effect : nil,
                             intensity: vapor?.rawValue
                         ))
                         dismiss()
@@ -129,7 +152,7 @@ struct ProfileEditView: View {
         }
         .navigationViewStyle(.stack)
         .presentationDetents([.medium, .large])
-        .onDisappear { onPreview(nil) }
+        .onDisappear { onPreview(nil, nil) }
     }
 }
 

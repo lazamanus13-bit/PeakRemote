@@ -9,6 +9,7 @@ struct DeviceView: View {
     @State private var brightness: Double = 128
     @State private var lanternColor: Color = .orange
     @State private var lanternCommit: Task<Void, Never>?
+    @State private var lanternEffect: LightEffect = .steady
     @Environment(\.openURL) private var openURL
     @State private var showFirmwareHelp = false
     @State private var showLog = false
@@ -81,8 +82,9 @@ struct DeviceView: View {
                 profile: profile,
                 celsius: useCelsius,
                 allowXL: c.status.chamberRaw == 2,
+                showEffects: c.colorFormat != .api3,
                 onSave: { edit in c.saveProfile(slot: profile.slot, edit: edit) },
-                onPreview: { color in c.preview(color) }
+                onPreview: { color, effect in c.preview(color, effect: effect) }
             )
         }
         .sheet(isPresented: $showLog) {
@@ -109,6 +111,9 @@ struct DeviceView: View {
         }
         .onChange(of: c.status.lanternColor) { value in
             if let value { lanternColor = value.color }
+        }
+        .onChange(of: c.status.lanternEffect) { value in
+            if let value { lanternEffect = value }
         }
     }
 
@@ -174,18 +179,23 @@ struct DeviceView: View {
                 get: { lanternColor },
                 set: { newColor in
                     lanternColor = newColor
-                    let rgb = RGB(newColor)
-                    c.preview(rgb)
-                    // Save once the user stops changing it, then end the preview.
-                    lanternCommit?.cancel()
-                    lanternCommit = Task {
-                        try? await Task.sleep(nanoseconds: 1_200_000_000)
-                        guard !Task.isCancelled else { return }
-                        c.setLanternColor(rgb)
-                        c.preview(nil)
-                    }
+                    previewAndCommitLantern()
                 }
             ), supportsOpacity: false)
+            if c.colorFormat != .api3 {
+                Picker("Lantern effect", selection: Binding(
+                    get: { lanternEffect },
+                    set: { newEffect in
+                        lanternEffect = newEffect
+                        previewAndCommitLantern()
+                    }
+                )) {
+                    ForEach(LightEffect.allCases) { e in
+                        Text(e.name).tag(e)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
             if c.status.lantern, let left = c.status.lanternRemainingS, left > 0 {
                 InfoRow(label: "Lantern time left", value: Fmt.duration(left))
             }
@@ -265,6 +275,20 @@ struct DeviceView: View {
                 Text("°C").tag(true)
             }
             .pickerStyle(.segmented)
+        }
+    }
+
+    /// Shows the lantern look on the Peak right away, then saves it once the user stops changing it.
+    private func previewAndCommitLantern() {
+        let rgb = RGB(lanternColor)
+        let effect: LightEffect? = c.colorFormat != .api3 ? lanternEffect : nil
+        c.preview(rgb, effect: effect)
+        lanternCommit?.cancel()
+        lanternCommit = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            c.setLanternColor(rgb, effect: effect)
+            c.preview(nil)
         }
     }
 
