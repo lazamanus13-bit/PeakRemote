@@ -39,6 +39,8 @@ final class PuffcoController: NSObject, ObservableObject {
     private var verbose = true
     /// Whether the device has replied to anything this connection (it stays silent until paired).
     private var gotAnyReply = false
+    /// Firmware and model come from the Lorax file system; read them once per connection.
+    private var readDeviceInfo = false
 
     private var nextSeq: UInt16 = 0xFFFF
     private var pendingReplies: [UInt16: CheckedContinuation<Lorax.Reply, Error>] = [:]
@@ -117,6 +119,7 @@ final class PuffcoController: NSObject, ObservableObject {
         verbose = true
         gotAnyReply = false
         nextSeq = 0xFFFF
+        readDeviceInfo = false
         unsupportedPaths = []
         failPending(PuffcoError.notConnected)
     }
@@ -417,6 +420,17 @@ final class PuffcoController: NSObject, ObservableObject {
             if status.serial == nil, let b = try await readOptional(LoraxPath.serial, size: 32) {
                 status.serial = Decode.string(b)
             }
+            if !readDeviceInfo {
+                readDeviceInfo = true
+                if let b = try await readOptional(LoraxPath.firmwareRevision, size: 12), let rev = b.first {
+                    appendLog("Firmware bytes: \(b.hex)")
+                    status.firmware = PuffcoInfo.revisionString(Int(rev))
+                }
+                if let b = try await readOptional(LoraxPath.modelCode, size: 4), let code = Decode.uint32(b) {
+                    appendLog("Model code: \(code)")
+                    status.model = PuffcoInfo.model(code: code) ?? "Model code \(code)"
+                }
+            }
         } catch {
             handlePollError(error)
         }
@@ -670,11 +684,13 @@ final class PuffcoController: NSObject, ObservableObject {
         case Lorax.eventUUID:
             appendLog("EVENT: \([UInt8](data).hex)")
         case Lorax.modelNumberUUID:
-            status.model = Decode.string([UInt8](data))
+            appendLog("GATT model: \([UInt8](data).hex)")
+            if status.model == nil { status.model = Decode.string([UInt8](data)) }
         case Lorax.serialNumberUUID:
             if status.serial == nil { status.serial = Decode.string([UInt8](data)) }
         case Lorax.firmwareUUID:
-            status.firmware = Decode.string([UInt8](data))
+            appendLog("GATT firmware: \([UInt8](data).hex)")
+            if status.firmware == nil { status.firmware = Decode.string([UInt8](data)) }
         default:
             break
         }

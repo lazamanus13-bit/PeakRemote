@@ -89,4 +89,14 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(Decode.string(Array("Daily".utf8) + [0, 0, 0]), "Daily")
         XCTAssertNil(Decode.string([0, 0]))
     }
+
+    func testRevisionString() {
+        // Matches PuffcoBLE's revision_number_to_string
+        XCTAssertEqual(PuffcoInfo.revisionString(0), "X*")
+        XCTAssertEqual(PuffcoInfo.revisionString(1), "A")
+        XCTAssertEqual(PuffcoInfo.revisionString(9), "J")
+        XCTAssertEqual(PuffcoInfo.revisionString(21), "Z")
+        XCTAssertEqual(PuffcoInfo.revisionString(22), "AA")
+        XCTAssertEqual(PuffcoInfo.revisionString(43), "BA")
+    }
 }

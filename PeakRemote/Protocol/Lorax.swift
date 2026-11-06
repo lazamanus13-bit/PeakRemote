@@ -108,6 +108,8 @@ enum LoraxPath {
 
     static let deviceName      = "/u/sys/name"
     static let serial          = "/p/sys/hw/ser"
+    static let firmwareRevision = "/p/sys/fw/ver"   // first byte = revision number
+    static let modelCode        = "/p/sys/hw/mdcd"  // uint32 model code
     static let activeProfile   = "/p/app/hcs"
     static let stealth         = "/u/app/ui/stlm"
     static let lantern         = "/p/app/ltrn/cmd"
@@ -200,4 +202,39 @@ enum Decode {
 
 extension Array where Element == UInt8 {
     var hex: String { map { String(format: "%02x", $0) }.joined() }
+}
+
+// MARK: - Firmware / model decoding (from PuffcoBLE's utils and product table)
+
+enum PuffcoInfo {
+    /// 1 → "A", 2 → "B", … skipping I, L, O, Q, S; 0 → "X*".
+    static func revisionString(_ value: Int) -> String {
+        let letters = Array("ABCDEFGHJKMNPRTUVWXYZ")
+        if value < 0 { return String(value) }
+        if value == 0 { return "X*" }
+        var shift = value - 1
+        var out = ""
+        while shift >= 0 {
+            out = String(letters[shift % letters.count]) + out
+            shift = shift / letters.count - 1
+        }
+        return out
+    }
+
+    /// Model code → (product family, edition name).
+    static func model(code: UInt32) -> String? {
+        switch code {
+        case 0, 21: return "Peak Pro (OG)"
+        case 1, 22: return "Peak Pro Opal"
+        case 2, 25: return "Peak Pro Indiglow"
+        case 4, 26: return "Peak Pro Guardian"
+        case 12: return "Peak Pro Pearl"
+        case 13: return "Peak Pro Onyx"
+        case 15: return "Peak Pro Desert"
+        case 17: return "Peak Pro Flourish"
+        case 19: return "Peak Pro Storm"
+        case 23: return "Peak Pro Daybreak"
+        default: return nil
+        }
+    }
 }
