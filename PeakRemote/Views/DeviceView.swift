@@ -86,14 +86,10 @@ struct DeviceView: View {
                 .environmentObject(c)
         }
         .alert("Firmware updates", isPresented: $showFirmwareHelp) {
-            Button("Disconnect & copy puffco.app") {
-                UIPasteboard.general.string = "puffco.app"
-                c.disconnect()
-            }
-            Button("Get Path Browser") { openURL(Self.pathBrowserURL) }
+            Button("Disconnect so the computer can connect") { c.disconnect() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("On iPhone and iPad, Puffco's own app runs at puffco.app inside Path Browser, and that's where firmware updates happen. Peak Remote disconnects so it can connect, then open Path Browser, paste puffco.app, and check for updates there.")
+            Text("Firmware updates come from Puffco's web app. On a computer, open Google Chrome, go to puffco.app, connect your Peak, and check for updates there. Peak Remote has to disconnect first: the Peak only talks to one device at a time.")
         }
         .alert("Something went wrong", isPresented: errorBinding) {
             Button("OK") { c.lastError = nil }
@@ -255,8 +251,6 @@ struct DeviceView: View {
             .pickerStyle(.segmented)
         }
     }
-
-    private static let pathBrowserURL = URL(string: "https://apps.apple.com/us/app/path-browser/id1519521388")!
 
     private var batteryText: String {
         guard let pct = c.status.batteryPct else { return "—" }
