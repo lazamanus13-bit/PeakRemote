@@ -31,6 +31,9 @@ enum Lorax {
     enum Opcode: UInt8 {
         case getAccessSeed = 0x00
         case unlockAccess  = 0x01
+        case getLimits     = 0x02
+        /// Sent by the official app right after subscribing (seen in melt's traffic capture).
+        case pruneFileHandles = 0x27
         case readShort     = 0x10
         case writeShort    = 0x11
     }

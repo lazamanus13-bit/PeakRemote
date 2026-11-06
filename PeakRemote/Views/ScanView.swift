@@ -3,6 +3,7 @@ import CoreBluetooth
 
 struct ScanView: View {
     @EnvironmentObject private var c: PuffcoController
+    @State private var showLog = false
 
     var body: some View {
         List {
@@ -61,6 +62,10 @@ struct ScanView: View {
         }
         .navigationTitle("Peak Remote")
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { showLog = true } label: { Image(systemName: "ladybug") }
+                    .accessibilityLabel("Debug log")
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(c.isScanning ? "Stop" : "Scan") {
                     if c.isScanning { c.stopScan() } else { c.startScan() }
@@ -73,6 +78,11 @@ struct ScanView: View {
             c.startScan()
         }
         .onAppear { c.startScan() }
+        .sheet(isPresented: $showLog) {
+            NavigationView { LogView() }
+                .navigationViewStyle(.stack)
+                .environmentObject(c)
+        }
     }
 
     private var bluetoothMessage: String? {

@@ -32,6 +32,11 @@ final class PuffcoController: NSObject, ObservableObject {
     private var commandChar: CBCharacteristic?
     private var replyChar: CBCharacteristic?
     private var versionChar: CBCharacteristic?
+    private var eventChar: CBCharacteristic?
+    /// Which setup step is running, so a failure message can say where it got stuck.
+    private var setupStep = ""
+    /// Log every packet until the device is unlocked (polling would flood the log afterwards).
+    private var verbose = true
 
     private var nextSeq: UInt16 = 0
     private var pendingReplies: [UInt16: CheckedContinuation<Lorax.Reply, Error>] = [:]
@@ -104,7 +109,10 @@ final class PuffcoController: NSObject, ObservableObject {
         commandChar = nil
         replyChar = nil
         versionChar = nil
+        eventChar = nil
         setupStarted = false
+        setupStep = ""
+        verbose = true
         unsupportedPaths = []
         failPending(PuffcoError.notConnected)
     }
@@ -142,6 +150,7 @@ final class PuffcoController: NSObject, ObservableObject {
         do {
             // Reading the version characteristic triggers iOS bonding on first connect.
             phase = .pairing
+            setupStep = "pairing"
             if let v = versionChar {
                 do {
                     let data = try await readCharacteristic(v, timeout: 45)
@@ -152,27 +161,52 @@ final class PuffcoController: NSObject, ObservableObject {
             }
 
             phase = .authenticating
+            try await Task.sleep(nanoseconds: 500_000_000) // let the device settle, as melt does
+
+            // Same opening sequence the official app uses (from melt's capture). Both are optional.
+            setupStep = "init command"
+            if let r = try? await send(.pruneFileHandles, body: [0x01, 0xC0, 0x03], timeout: 2) {
+                appendLog("Init reply status \(r.status)")
+            }
+            setupStep = "get limits"
+            if let r = try? await send(.getLimits) {
+                appendLog("Limits (status \(r.status)): \(r.payload.hex)")
+            }
+
             try await authenticate()
 
             phase = .ready
+            setupStep = ""
+            verbose = false
             appendLog("Unlocked ✓")
             await refreshProfiles()
             await pollSlow()
             await pollFast()
             startPolling()
         } catch {
-            fail(error.localizedDescription)
+            let step = setupStep.isEmpty ? "" : " (step: \(setupStep))"
+            fail(error.localizedDescription + step)
         }
     }
 
     private func authenticate() async throws {
-        let seedReply = try await send(.getAccessSeed)
+        setupStep = "get unlock seed"
+        var seedReply: Lorax.Reply
+        do {
+            seedReply = try await send(.getAccessSeed)
+        } catch PuffcoError.timeout {
+            appendLog("Seed request timed out, retrying once")
+            seedReply = try await send(.getAccessSeed)
+        }
         appendLog("Seed (status \(seedReply.status)): \(seedReply.payload.hex)")
         guard let token = Lorax.authToken(seed: seedReply.payload) else { throw PuffcoError.authFailed }
+
+        setupStep = "unlock"
         let unlock = try await send(.unlockAccess, body: token)
         appendLog("Unlock status: \(unlock.status)")
 
         // Confirm by reading something that requires access.
+        setupStep = "first read"
         let state = try await readPath(LoraxPath.operatingState, size: 1)
         guard let raw = state.first else { throw PuffcoError.authFailed }
         status.state = OperatingState(raw: raw)
@@ -180,7 +214,7 @@ final class PuffcoController: NSObject, ObservableObject {
 
     // MARK: - Lorax request / reply
 
-    private func send(_ opcode: Lorax.Opcode, body: [UInt8] = [], timeout: Double = 2.5) async throws -> Lorax.Reply {
+    private func send(_ opcode: Lorax.Opcode, body: [UInt8] = [], timeout: Double = 5) async throws -> Lorax.Reply {
         await gate.acquire()
         defer { gate.release() }
 
@@ -192,8 +226,10 @@ final class PuffcoController: NSObject, ObservableObject {
         if nextSeq == 0 { nextSeq = 1 }
         let seq = nextSeq
         let packet = Lorax.command(seq: seq, opcode: opcode, body: body)
+        // Write with response when possible (melt found unacknowledged writes get dropped).
         let writeType: CBCharacteristicWriteType =
-            cmd.properties.contains(.writeWithoutResponse) ? .withoutResponse : .withResponse
+            cmd.properties.contains(.write) ? .withResponse : .withoutResponse
+        if verbose { appendLog("TX \(opcode) seq \(seq): \([UInt8](packet).hex)") }
 
         return try await withCheckedThrowingContinuation { continuation in
             pendingReplies[seq] = continuation
@@ -212,9 +248,15 @@ final class PuffcoController: NSObject, ObservableObject {
     }
 
     private func handleReply(_ data: Data) {
-        guard let reply = Lorax.parseReply(data) else { return }
+        guard let reply = Lorax.parseReply(data) else {
+            appendLog("RX (too short): \([UInt8](data).hex)")
+            return
+        }
         if let c = pendingReplies.removeValue(forKey: reply.seq) {
+            if verbose { appendLog("RX seq \(reply.seq) status \(reply.status): \(reply.payload.hex)") }
             c.resume(returning: reply)
+        } else {
+            appendLog("RX unmatched seq \(reply.seq): \([UInt8](data).hex)")
         }
     }
 
@@ -540,17 +582,41 @@ final class PuffcoController: NSObject, ObservableObject {
             case Lorax.commandUUID: commandChar = c
             case Lorax.replyUUID: replyChar = c
             case Lorax.versionUUID: versionChar = c
+            case Lorax.eventUUID: eventChar = c
             default: break
             }
+            appendLog("Char \(c.uuid.uuidString.prefix(8)): \(Self.describe(c.properties))")
         }
         guard let reply = replyChar, commandChar != nil else {
             fail("The device is missing the Lorax command/reply characteristics.")
             return
         }
+        setupStep = "subscribe to replies"
         p.setNotifyValue(true, for: reply)
+        if let event = eventChar { p.setNotifyValue(true, for: event) }
+    }
+
+    private static func describe(_ props: CBCharacteristicProperties) -> String {
+        var parts: [String] = []
+        if props.contains(.read) { parts.append("read") }
+        if props.contains(.write) { parts.append("write") }
+        if props.contains(.writeWithoutResponse) { parts.append("writeNoResp") }
+        if props.contains(.notify) { parts.append("notify") }
+        if props.contains(.indicate) { parts.append("indicate") }
+        return parts.joined(separator: ",")
+    }
+
+    private func handleWrite(uuid: CBUUID, error: Error?) {
+        if let error, uuid == Lorax.commandUUID {
+            appendLog("Write error: \(error.localizedDescription)")
+        }
     }
 
     private func handleNotifyState(_ c: CBCharacteristic, error: Error?) {
+        if c.uuid == Lorax.eventUUID {
+            appendLog(error.map { "Event subscribe failed: \($0.localizedDescription)" } ?? "Subscribed to events")
+            return
+        }
         guard c.uuid == Lorax.replyUUID else { return }
         if let error {
             fail("Couldn't subscribe to replies: \(error.localizedDescription)")
@@ -570,6 +636,8 @@ final class PuffcoController: NSObject, ObservableObject {
         switch uuid {
         case Lorax.replyUUID:
             handleReply(data)
+        case Lorax.eventUUID:
+            appendLog("EVENT: \([UInt8](data).hex)")
         case Lorax.modelNumberUUID:
             status.model = Decode.string([UInt8](data))
         case Lorax.serialNumberUUID:
@@ -633,6 +701,11 @@ extension PuffcoController: CBPeripheralDelegate {
         let uuid = characteristic.uuid
         let value = characteristic.value
         onMain { self.handleValue(uuid: uuid, data: value, error: error) }
+    }
+
+    nonisolated func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        let uuid = characteristic.uuid
+        onMain { self.handleWrite(uuid: uuid, error: error) }
     }
 }
 
