@@ -80,6 +80,7 @@ struct DeviceView: View {
             ProfileEditView(
                 profile: profile,
                 celsius: useCelsius,
+                allowXL: c.status.chamberRaw == 2,
                 onSave: { edit in c.saveProfile(slot: profile.slot, edit: edit) },
                 onPreview: { color in c.preview(color) }
             )

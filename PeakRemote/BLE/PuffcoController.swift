@@ -589,6 +589,9 @@ final class PuffcoController: NSObject, ObservableObject {
             if let t = edit.boostTimeS {
                 try await c.writePath(LoraxPath.profileBoostTime(slot), Encode.float32(Float(t.rounded())))
             }
+            if let level = edit.intensity, level != profile.intensity {
+                try await c.writePath(LoraxPath.profileIntensity(slot), Encode.float32(Float(level)))
+            }
             if let color = edit.color, color != profile.color {
                 try await c.writeColor(LoraxPath.profileColor(slot), color)
             }

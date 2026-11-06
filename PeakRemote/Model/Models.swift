@@ -50,6 +50,31 @@ struct ProfileEdit {
     var boostTempDeltaC: Double?
     var boostTimeS: Double?
     var color: RGB?
+    var intensity: Double?
+}
+
+/// Vapor levels and the values the official app writes to /u/app/hc/N/intn.
+enum VaporLevel: Double, CaseIterable, Identifiable {
+    case standard = 0
+    case high = 0.5
+    case max = 1
+    case xl = 1.5
+
+    var id: Double { rawValue }
+
+    var name: String {
+        switch self {
+        case .standard: return "Standard"
+        case .high: return "High"
+        case .max: return "Max"
+        case .xl: return "XL"
+        }
+    }
+
+    /// Closest level to a value read from the device.
+    static func nearest(_ value: Double) -> VaporLevel {
+        allCases.min { abs($0.rawValue - value) < abs($1.rawValue - value) } ?? .standard
+    }
 }
 
 struct RGB: Equatable {

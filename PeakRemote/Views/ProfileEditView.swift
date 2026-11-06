@@ -4,6 +4,8 @@ import UIKit
 struct ProfileEditView: View {
     let profile: HeatProfile
     let celsius: Bool
+    /// XL vapor is only offered with an XL chamber (the official app restricts it too).
+    let allowXL: Bool
     let onSave: (ProfileEdit) -> Void
     /// Shows the color on the Peak while choosing; nil ends the preview.
     let onPreview: (RGB?) -> Void
@@ -15,6 +17,7 @@ struct ProfileEditView: View {
     @State private var boostSeconds: Double
     @State private var color: Color
     @State private var colorChanged = false
+    @State private var vapor: VaporLevel?
 
     // Limits from the official app.
     static let tempRangeF: ClosedRange<Double> = 400...644
@@ -22,11 +25,13 @@ struct ProfileEditView: View {
     static let boostRangeF: ClosedRange<Double> = 1...36
     static let boostTimeRange: ClosedRange<Double> = 1...60
 
-    init(profile: HeatProfile, celsius: Bool,
+    init(profile: HeatProfile, celsius: Bool, allowXL: Bool,
          onSave: @escaping (ProfileEdit) -> Void,
          onPreview: @escaping (RGB?) -> Void) {
         self.profile = profile
         self.celsius = celsius
+        self.allowXL = allowXL || profile.intensity.map { VaporLevel.nearest($0) == .xl } == true
+        _vapor = State(initialValue: profile.intensity.map(VaporLevel.nearest))
         self.onSave = onSave
         self.onPreview = onPreview
         func clamp(_ v: Double, _ r: ClosedRange<Double>) -> Double { min(max(v, r.lowerBound), r.upperBound) }
@@ -78,9 +83,21 @@ struct ProfileEditView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if let intensity = profile.intensity {
-                    Section("Vapor intensity") {
-                        InfoRow(label: "Current value", value: String(format: "%.2f", intensity))
+                if vapor != nil {
+                    Section {
+                        Picker("Vapor", selection: Binding(
+                            get: { vapor ?? .standard },
+                            set: { vapor = $0 }
+                        )) {
+                            ForEach(VaporLevel.allCases.filter { $0 != .xl || allowXL }) { level in
+                                Text(level.name).tag(level)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    } header: {
+                        Text("Vapor")
+                    } footer: {
+                        Text(allowXL ? "Higher levels make denser vapor." : "Higher levels make denser vapor. XL needs a 3DXL chamber.")
                     }
                 }
                 Section {
@@ -102,7 +119,8 @@ struct ProfileEditView: View {
                             durationS: seconds,
                             boostTempDeltaC: boostF * 5 / 9,
                             boostTimeS: boostSeconds,
-                            color: colorChanged ? RGB(color) : nil
+                            color: colorChanged ? RGB(color) : nil,
+                            intensity: vapor?.rawValue
                         ))
                         dismiss()
                     }

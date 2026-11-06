@@ -130,4 +130,14 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(c?.0, 9); XCTAssertEqual(c?.1, 8); XCTAssertEqual(c?.2, 7)
         XCTAssertNil(PeakColor.firstColor(in: PeakColor.api2None))
     }
+
+    func testVaporLevels() {
+        // Values from the official app's Vapor table.
+        XCTAssertEqual(VaporLevel.standard.rawValue, 0)
+        XCTAssertEqual(VaporLevel.high.rawValue, 0.5)
+        XCTAssertEqual(VaporLevel.max.rawValue, 1)
+        XCTAssertEqual(VaporLevel.xl.rawValue, 1.5)
+        XCTAssertEqual(VaporLevel.nearest(0.49), .high)
+        XCTAssertEqual(VaporLevel.nearest(1.6), .xl)
+    }
 }
