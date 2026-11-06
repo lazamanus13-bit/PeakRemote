@@ -37,6 +37,8 @@ final class PuffcoController: NSObject, ObservableObject {
     private var setupStep = ""
     /// Log every packet until the device is unlocked (polling would flood the log afterwards).
     private var verbose = true
+    /// Whether the device has replied to anything this connection (it stays silent until paired).
+    private var gotAnyReply = false
 
     private var nextSeq: UInt16 = 0
     private var pendingReplies: [UInt16: CheckedContinuation<Lorax.Reply, Error>] = [:]
@@ -113,6 +115,7 @@ final class PuffcoController: NSObject, ObservableObject {
         setupStarted = false
         setupStep = ""
         verbose = true
+        gotAnyReply = false
         unsupportedPaths = []
         failPending(PuffcoError.notConnected)
     }
@@ -184,8 +187,12 @@ final class PuffcoController: NSObject, ObservableObject {
             await pollFast()
             startPolling()
         } catch {
-            let step = setupStep.isEmpty ? "" : " (step: \(setupStep))"
-            fail(error.localizedDescription + step)
+            if let e = error as? PuffcoError, case .timeout = e, !gotAnyReply {
+                fail("Your Peak isn't answering, which usually means it isn't paired with this device yet. Hold its button for 6 seconds until it glows blue, then tap it here again and accept the iOS pairing request.")
+            } else {
+                let step = setupStep.isEmpty ? "" : " (step: \(setupStep))"
+                fail(error.localizedDescription + step)
+            }
         }
     }
 
@@ -248,6 +255,7 @@ final class PuffcoController: NSObject, ObservableObject {
     }
 
     private func handleReply(_ data: Data) {
+        gotAnyReply = true
         guard let reply = Lorax.parseReply(data) else {
             appendLog("RX (too short): \([UInt8](data).hex)")
             return
