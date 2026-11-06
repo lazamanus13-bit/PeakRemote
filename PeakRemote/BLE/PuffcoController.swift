@@ -212,7 +212,7 @@ final class PuffcoController: NSObject, ObservableObject {
                 }
                 do {
                     let data = try await readCharacteristic(c, timeout: 30)
-                    appendLog("  \(id) read: \([UInt8](data).prefix(24).hex)")
+                    appendLog("  \(id) read: \(Array([UInt8](data).prefix(24)).hex)")
                 } catch {
                     appendLog("  \(id) read error: \(error.localizedDescription)")
                 }

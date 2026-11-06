@@ -37,7 +37,9 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
-          test -d build/Build/Products/Release-iphoneos/PeakRemote.app
+          grep -q "BUILD SUCCEEDED" build.log
+          test -f build/Build/Products/Release-iphoneos/PeakRemote.app/PeakRemote
+          test -f build/Build/Products/Release-iphoneos/PeakRemote.app/Info.plist
 
       - name: Package .ipa
         run: |
@@ -48,6 +50,7 @@ jobs:
           zip -qr -X PeakRemote.ipa Payload
           echo "IPA contents:"
           unzip -l PeakRemote.ipa
+          unzip -l PeakRemote.ipa | grep -q "Payload/PeakRemote.app/Info.plist"
 
       - name: Publish .ipa to Releases (direct download)
         if: github.ref == 'refs/heads/main'
