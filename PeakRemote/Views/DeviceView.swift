@@ -8,6 +8,7 @@ struct DeviceView: View {
     @State private var editingProfile: HeatProfile?
     @State private var brightness: Double = 128
     @State private var lanternColor: Color = .orange
+    @Environment(\.openURL) private var openURL
     @State private var showLog = false
 
     private var ready: Bool { c.phase == .ready }
@@ -230,6 +231,14 @@ struct DeviceView: View {
             InfoRow(label: "Chamber", value: ChamberLabel.name(c.status.chamberRaw))
             InfoRow(label: "Model", value: c.status.model ?? "—")
             InfoRow(label: "Firmware", value: c.status.firmware ?? "—")
+            Button {
+                openPuffcoAppForUpdates()
+            } label: {
+                Label("Check for firmware updates", systemImage: "arrow.down.circle")
+            }
+            Text("Opens the official Puffco app, which checks for and installs firmware. Peak Remote disconnects so the Puffco app can connect.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             InfoRow(label: "Serial", value: c.status.serial ?? "—")
             Picker("Units", selection: $useCelsius) {
                 Text("°F").tag(false)
@@ -237,6 +246,21 @@ struct DeviceView: View {
             }
             .pickerStyle(.segmented)
         }
+    }
+
+    /// Hands off to the official app (its registered link schemes), then frees the Bluetooth link.
+    private func openPuffcoAppForUpdates() {
+        let schemes = ["puffco-connect://", "puffco://"]
+        func attempt(_ index: Int) {
+            guard index < schemes.count, let url = URL(string: schemes[index]) else {
+                c.lastError = "Couldn't open the Puffco app. Install it from the App Store to check for firmware updates."
+                return
+            }
+            openURL(url) { opened in
+                if opened { c.disconnect() } else { attempt(index + 1) }
+            }
+        }
+        attempt(0)
     }
 
     private var batteryText: String {
