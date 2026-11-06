@@ -1,4 +1,4 @@
-# Manually triggered: builds for the simulator, launches the app, and prints any crash report.
+# Manually triggered: tries to launch the app on an iOS 15 simulator and prints any crash report.
 name: Launch test
 
 on:
@@ -7,11 +7,30 @@ on:
 jobs:
   launch:
     runs-on: macos-15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
       - name: Generate project
         run: brew install xcodegen && xcodegen generate
+
+      - name: Get an iOS 15 simulator runtime
+        run: |
+          xcrun simctl list runtimes
+          for V in 15.5 15.4 15.2; do
+            echo "== trying xcodebuild -downloadPlatform iOS -buildVersion $V"
+            if xcodebuild -downloadPlatform iOS -buildVersion $V 2>&1 | tail -5; then
+              xcrun simctl list runtimes | grep -q "iOS 15" && break
+            fi
+          done
+          if ! xcrun simctl list runtimes | grep -q "iOS 15"; then
+            echo "== trying xcodes"
+            brew install xcodesorg/made/xcodes aria2 >/dev/null 2>&1 || true
+            xcodes runtimes 2>&1 | grep -E "iOS 15" | head
+            xcodes runtimes install "iOS 15.5" 2>&1 | tail -10 || true
+          fi
+          echo "== runtimes now:"
+          xcrun simctl list runtimes
 
       - name: Build for simulator
         run: |
@@ -21,41 +40,32 @@ jobs:
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
           test -d build/Build/Products/Debug-iphonesimulator/PeakRemote.app
 
-      - name: Launch on every available iOS runtime
+      - name: Launch on iOS 15 and 18
         run: |
-          xcrun simctl list runtimes
           APP=build/Build/Products/Debug-iphonesimulator/PeakRemote.app
-          python3 - <<'EOF' > sims.txt
-          import json, subprocess
-          d = json.loads(subprocess.check_output(["xcrun","simctl","list","devices","available","-j"]))["devices"]
-          for rt, devs in d.items():
-              if "iOS" not in rt: continue
-              for dev in devs:
-                  if dev["name"].startswith("iPhone"):
-                      print(rt.split(".")[-1], dev["udid"]); break
-          EOF
-          cat sims.txt
-          while read RT UDID; do
-            echo "================ $RT ($UDID) ================"
+          for RT_ID in $(xcrun simctl list runtimes -j | python3 -c "import json,sys; [print(r['identifier']) for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and (r['version'].startswith('15.') or r['version'].startswith('18.'))]"); do
+            UDID=$(xcrun simctl create "Test-$RT_ID" "com.apple.CoreSimulator.SimDeviceType.iPhone-13-Pro-Max" "$RT_ID" 2>/dev/null || xcrun simctl create "Test-$RT_ID" "iPhone 14" "$RT_ID")
+            echo "================ $RT_ID ($UDID)"
             xcrun simctl boot "$UDID" || true
-            xcrun simctl bootstatus "$UDID" -b >/dev/null
+            xcrun simctl bootstatus "$UDID" -b > /dev/null
             xcrun simctl install "$UDID" "$APP"
-            xcrun simctl launch "$UDID" com.example.PeakRemote || echo "LAUNCH COMMAND FAILED"
-            sleep 10
+            xcrun simctl launch --console-pty "$UDID" com.example.PeakRemote > console-$UDID.txt 2>&1 &
+            sleep 15
             if xcrun simctl spawn "$UDID" launchctl list | grep -q "com.example.PeakRemote"; then
-              echo "RESULT $RT: app still running after 10s"
+              echo "RESULT $RT_ID: app still running after 15s"
             else
-              echo "RESULT $RT: app NOT running (crashed?)"
+              echo "RESULT $RT_ID: app NOT running (crashed)"
             fi
+            echo "-- console output:"; head -60 console-$UDID.txt
             xcrun simctl shutdown "$UDID" || true
-          done < sims.txt
+          done
 
       - name: Print crash reports
         if: always()
         run: |
-          ls -la ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i peak || echo "no PeakRemote crash reports"
           for f in ~/Library/Logs/DiagnosticReports/*PeakRemote*; do
             [ -f "$f" ] || continue
             echo "######## $f"
-            head -c 12000 "$f"
+            head -c 15000 "$f"
           done
+          echo "(end of crash reports)"

@@ -4,6 +4,10 @@ name: Build iOS app
 
 on:
   push:
+    paths-ignore:
+      - ".github/workflows/launch-test.yml"
+      - ".github/workflows/xcode-compare.yml"
+      - "README.md"
   workflow_dispatch:
 
 permissions:
