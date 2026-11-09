@@ -38,6 +38,10 @@ struct ProfileEditView: View {
          onPreview: @escaping (PreviewLook?) -> Void) {
         self.showEffects = showEffects
         _multiColor = State(initialValue: showEffects && profile.isMultiColor)
+        if profile.multiColors.count >= 2 {
+            // Start from the colors already on the Peak.
+            _multi = State(initialValue: MultiColorLook(colors: profile.multiColors))
+        }
         _effect = State(initialValue: profile.lightEffect ?? .steady)
         self.profile = profile
         self.celsius = celsius

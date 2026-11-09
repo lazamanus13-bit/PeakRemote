@@ -536,9 +536,14 @@ final class PuffcoController: NSObject, ObservableObject {
                         appendLog("Color format: \(f)")
                     }
                     if verbose || slot == 0 { appendLog("Profile \(slot + 1) color file: \(Array(b.prefix(48)).hex)") }
-                    if let c = PeakColor.firstColor(in: b) { profile.color = RGB(r: c.0, g: c.1, b: c.2) }
+                    profile.color = PeakColor.firstColor(in: b).map { RGB(r: $0.0, g: $0.1, b: $0.2) }
                     profile.lightEffect = PeakColor.effect(in: b)
                     profile.isMultiColor = PeakColor.isMultiColor(b)
+                    profile.multiColors = []
+                    if let listSlot = PeakColor.userListSlot(in: b),
+                       let list = try await readAll(LoraxPath.userColorList(listSlot)) {
+                        profile.multiColors = PeakColor.mainColors(fromList: list, entries: PeakColor.entryCount(in: b))
+                    }
                 }
                 status.profiles[slot] = profile
             }

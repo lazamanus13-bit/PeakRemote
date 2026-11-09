@@ -161,3 +161,34 @@ struct MultiColorPreset: Identifiable {
         make("Lava",    [0xFF0000, 0x8A0000, 0xFF5000],                     .fade,     0.25),
     ]
 }
+
+extension PeakColor {
+    /// For a multi-color pointer, which user color list (0-7) it shows; nil for firmware lists or single colors.
+    static func userListSlot(in bytes: [UInt8]) -> UInt8? {
+        guard isMultiColor(bytes) else { return nil }
+        let index = bytes[6] & 0x0F
+        return index >= MultiColorSlot.userListOffset ? index - MultiColorSlot.userListOffset : nil
+    }
+
+    /// How many entries of the color list a multi-color pointer uses (0 means 32).
+    static func entryCount(in bytes: [UInt8]) -> Int {
+        guard bytes.count >= 8 else { return 0 }
+        let n = Int(bytes[7] & 31)
+        return n == 0 ? 32 : n
+    }
+
+    /// Picks the main colors back out of a color list ([R, G, B, 0] entries): one every few entries,
+    /// matching how lists are blended, without repeats, at most six.
+    static func mainColors(fromList list: [UInt8], entries: Int) -> [RGB] {
+        let available = min(list.count / 4, max(entries, 0))
+        guard available > 0 else { return [] }
+        let step = available >= MultiColorLook.stepsPerColor * 2 ? MultiColorLook.stepsPerColor : 1
+        var picked: [RGB] = []
+        for i in stride(from: 0, to: available, by: step) {
+            let c = RGB(r: list[i * 4], g: list[i * 4 + 1], b: list[i * 4 + 2])
+            if !picked.contains(c) { picked.append(c) }
+            if picked.count == MultiColorLook.maxColors { break }
+        }
+        return picked
+    }
+}

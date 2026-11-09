@@ -159,6 +159,8 @@ struct HeatProfile: Identifiable, Equatable {
     var color: RGB?
     var lightEffect: LightEffect?
     var isMultiColor = false
+    /// Main colors of a multi-color profile, read back from its color list.
+    var multiColors: [RGB] = []
 
     var id: Int { slot }
     var displayName: String { name ?? "Profile \(slot + 1)" }

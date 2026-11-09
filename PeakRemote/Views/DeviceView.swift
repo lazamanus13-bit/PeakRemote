@@ -548,7 +548,9 @@ struct ProfileTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                if let color = profile.color {
+                if profile.isMultiColor {
+                    MultiColorDot(colors: profile.multiColors)
+                } else if let color = profile.color {
                     Circle().fill(color.color).frame(width: 10, height: 10)
                 }
                 Text(profile.displayName)
@@ -670,5 +672,23 @@ extension RGB {
         UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         func byte(_ v: CGFloat) -> UInt8 { UInt8(max(0, min(255, (v * 255).rounded()))) }
         self.init(r: byte(red), g: byte(green), b: byte(blue))
+    }
+}
+
+/// A small color wheel for multi-color looks (a rainbow ring if the colors aren't known yet).
+struct MultiColorDot: View {
+    let colors: [RGB]
+    var size: CGFloat = 10
+
+    private var wheel: [Color] {
+        let base = colors.count >= 2 ? colors.map(\.color) : [.red, .orange, .yellow, .green, .blue, .purple]
+        return base + [base[0]]
+    }
+
+    var body: some View {
+        Circle()
+            .fill(AngularGradient(colors: wheel, center: .center))
+            .frame(width: size, height: size)
+            .accessibilityLabel("Multiple colors")
     }
 }

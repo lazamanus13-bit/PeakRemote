@@ -266,4 +266,18 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(b.moving(.battery, before: .battery), b)
         XCTAssertEqual(b.all.count, DashboardTile.allCases.count)
     }
+
+    func testReadingMultiColorsBack() {
+        let look = MultiColorLook(colors: [RGB(r: 255, g: 0, b: 0), RGB(r: 0, g: 255, b: 0), RGB(r: 0, g: 0, b: 255)])
+        let pointer = look.pointerBytes(slot: 3)
+        XCTAssertEqual(PeakColor.userListSlot(in: pointer), 3)
+        XCTAssertEqual(PeakColor.entryCount(in: pointer), 15)
+        let colors = PeakColor.mainColors(fromList: look.colorListBytes(), entries: PeakColor.entryCount(in: pointer))
+        XCTAssertEqual(colors, look.colors)
+        XCTAssertNil(PeakColor.userListSlot(in: PeakColor.api2Solid(r: 1, g: 2, b: 3)))
+        // A pointer at a firmware list (index below 8) isn't one of ours
+        var firmware = pointer
+        firmware[6] = 0x22
+        XCTAssertNil(PeakColor.userListSlot(in: firmware))
+    }
 }
