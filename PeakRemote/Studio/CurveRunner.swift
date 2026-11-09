@@ -130,9 +130,12 @@ final class CurveRunner: ObservableObject {
             }
 
             // Optional: show the curve's color while it runs (the old lights come back afterwards).
-            if let color = curve.color {
-                if let old = try await c.readAll(LoraxPath.profileColor(slot)), !old.isEmpty {
-                    backup?.colorBytes = old
+            if curve.hasLights, let old = try await c.readAll(LoraxPath.profileColor(slot)), !old.isEmpty {
+                backup?.colorBytes = old
+                if let multi = curve.multi, c.colorFormat != .api3 {
+                    let pointer = try await c.writeMultiColor(multi, slot: MultiColorSlot.curve)
+                    _ = try await c.writePath(LoraxPath.profileColor(slot), pointer)
+                } else if let color = curve.color ?? curve.multi?.colors.first {
                     _ = try await c.writeColor(LoraxPath.profileColor(slot), color,
                                                effect: c.colorFormat == .api3 ? nil : curve.effect)
                 }

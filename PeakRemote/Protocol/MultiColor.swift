@@ -11,7 +11,7 @@ import Foundation
 /// - Speed is cycles per minute / 3; 0 holds the colors still.
 /// Layout learned from the official app's codecs; the patterns and blending below are our own.
 
-enum LightPattern: String, CaseIterable, Identifiable {
+enum LightPattern: String, CaseIterable, Identifiable, Codable {
     case fade
     case wave
     case gradient
@@ -37,7 +37,7 @@ enum LightPattern: String, CaseIterable, Identifiable {
     var moves: Bool { self != .gradient }
 }
 
-struct MultiColorLook: Equatable {
+struct MultiColorLook: Equatable, Codable {
     static let maxColors = 6           // 6 colors x 5 blend steps = 30 entries (limit 32)
     static let stepsPerColor = 5
     static let ledCount = 20
@@ -123,6 +123,8 @@ enum MultiColorSlot {
     static let lantern: UInt8 = 5
     /// Unused by the official app, so previews never overwrite a saved look.
     static let preview: UInt8 = 7
+    /// Studio curve runs use slot 0, the official app's temporary slot, so saved looks stay untouched.
+    static let curve: UInt8 = 0
 }
 
 extension PeakColor {

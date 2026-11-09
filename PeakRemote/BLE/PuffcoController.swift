@@ -640,7 +640,7 @@ final class PuffcoController: NSObject, ObservableObject {
     }
 
     /// Writes the color list and offset list for `look` into `slot`; returns the 8-byte pointer to use.
-    private func writeMultiColor(_ look: MultiColorLook, slot: UInt8) async throws -> [UInt8] {
+    func writeMultiColor(_ look: MultiColorLook, slot: UInt8) async throws -> [UInt8] {
         try await writeAll(LoraxPath.userColorList(slot), look.colorListBytes())
         try await writeAll(LoraxPath.userOffsetList(slot), look.offsetListBytes())
         return look.pointerBytes(slot: slot)

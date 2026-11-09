@@ -219,4 +219,13 @@ final class LoraxTests: XCTestCase {
         let legacy = try JSONDecoder().decode([HeatCurve].self, from: Data(old.utf8))
         XCTAssertNil(legacy.first?.color)
     }
+
+    func testCurveMultiColorSurvivesSaving() throws {
+        var curve = HeatCurve(name: "Rainbow", points: [CurvePoint(time: 0, tempF: 500), CurvePoint(time: 30, tempF: 480)])
+        curve.multi = MultiColorLook(colors: [RGB(r: 255, g: 0, b: 0), RGB(r: 0, g: 255, b: 0)], pattern: .wave, speed: 0.7)
+        let back = try JSONDecoder().decode([HeatCurve].self, from: JSONEncoder().encode([curve]))
+        XCTAssertEqual(back.first?.multi, curve.multi)
+        XCTAssertTrue(back.first?.hasLights == true)
+        XCTAssertEqual(MultiColorSlot.curve, 0)
+    }
 }

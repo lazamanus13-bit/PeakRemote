@@ -147,7 +147,11 @@ struct StudioCard: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    if let color = curve.color {
+                    if let multi = curve.multi {
+                        Circle()
+                            .fill(AngularGradient(colors: multi.colors.map(\.color) + [multi.colors[0].color], center: .center))
+                            .frame(width: 10, height: 10)
+                    } else if let color = curve.color {
                         Circle().fill(color.color).frame(width: 10, height: 10)
                     }
                     Text(curve.name).font(.subheadline.weight(.semibold))
@@ -217,7 +221,7 @@ struct CurveChart: View {
     let celsius: Bool
 
     private func display(_ f: Double) -> Double { celsius ? Temp.c(fromF: f) : f }
-    private var lineColor: Color { curve.color?.color ?? .orange }
+    private var lineColor: Color { (curve.color ?? curve.multi?.colors.first)?.color ?? .orange }
 
     var body: some View {
         Chart {
@@ -310,41 +314,82 @@ struct CurveEditorView: View {
     private var lightsSection: some View {
         Section {
             Toggle("Light color", isOn: Binding(
-                get: { curve.color != nil },
+                get: { curve.hasLights },
                 set: { on in
-                    curve.color = on ? (curve.color ?? RGB(r: 255, g: 120, b: 0)) : nil
-                    if !on { curve.effect = nil }
+                    if on {
+                        curve.color = RGB(r: 255, g: 120, b: 0)
+                    } else {
+                        curve.color = nil
+                        curve.multi = nil
+                        curve.effect = nil
+                    }
                     previewLights()
                 }
             ))
-            if curve.color != nil {
-                ColorPicker("Color", selection: Binding(
-                    get: { curve.color?.color ?? .orange },
-                    set: { curve.color = RGB($0); previewLights() }
-                ), supportsOpacity: false)
+            if curve.hasLights {
                 if showEffects {
-                    Picker("Effect", selection: Binding(
-                        get: { curve.effect ?? .steady },
-                        set: { curve.effect = $0; previewLights() }
-                    )) {
-                        ForEach(LightEffect.allCases) { e in
-                            Text(e.name).tag(e)
+                    Picker("Style", selection: Binding(
+                        get: { curve.multi != nil },
+                        set: { isMulti in
+                            if isMulti {
+                                curve.multi = curve.multi ?? .default
+                                curve.color = nil
+                            } else {
+                                curve.color = curve.multi?.colors.first ?? curve.color ?? RGB(r: 255, g: 120, b: 0)
+                                curve.multi = nil
+                            }
+                            previewLights()
                         }
+                    )) {
+                        Text("Single color").tag(false)
+                        Text("Multiple colors").tag(true)
                     }
-                    .pickerStyle(.menu)
+                    .pickerStyle(.segmented)
+                }
+                if curve.multi != nil {
+                    MultiColorEditor(look: Binding(
+                        get: { curve.multi ?? .default },
+                        set: { curve.multi = $0 }
+                    )) { look in
+                        curve.multi = look
+                        previewLights()
+                    }
+                } else {
+                    singleColorControls
                 }
             }
         } header: {
             Text("Lights")
         } footer: {
-            Text(curve.color == nil
-                 ? "Off: the Peak keeps profile 4's lights while the curve runs."
-                 : "Your Peak shows this while the curve runs, then profile 4's lights come back. It previews live while you choose.")
+            Text(curve.hasLights
+                 ? "Your Peak shows this while the curve runs, then profile 4's lights come back. It previews live while you choose."
+                 : "Off: the Peak keeps profile 4's lights while the curve runs.")
+        }
+    }
+
+    @ViewBuilder
+    private var singleColorControls: some View {
+        ColorPicker("Color", selection: Binding(
+            get: { curve.color?.color ?? .orange },
+            set: { curve.color = RGB($0); previewLights() }
+        ), supportsOpacity: false)
+        if showEffects {
+            Picker("Effect", selection: Binding(
+                get: { curve.effect ?? .steady },
+                set: { curve.effect = $0; previewLights() }
+            )) {
+                ForEach(LightEffect.allCases) { e in
+                    Text(e.name).tag(e)
+                }
+            }
+            .pickerStyle(.menu)
         }
     }
 
     private func previewLights() {
-        if let color = curve.color {
+        if let multi = curve.multi {
+            onPreview(.multiColor(multi))
+        } else if let color = curve.color {
             onPreview(.singleColor(color, showEffects ? (curve.effect ?? .steady) : nil))
         } else {
             onPreview(nil)

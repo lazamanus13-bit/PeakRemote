@@ -11,6 +11,10 @@ struct HeatCurve: Identifiable, Codable, Equatable {
     /// Light color shown on the Peak while this curve runs (nil = leave the lights alone).
     var color: RGB?
     var effect: LightEffect?
+    /// Multiple colors shown while this curve runs (takes the place of `color`).
+    var multi: MultiColorLook?
+
+    var hasLights: Bool { color != nil || multi != nil }
 
     /// Limits for curve points (°F); the runner clamps targets again before sending them.
     static let tempRangeF: ClosedRange<Double> = 400...580
