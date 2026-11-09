@@ -287,11 +287,30 @@ enum PuffcoInfo {
         return productName(code: code)
     }
 
-    /// Best name for the device: from the printed model number, then the internal model code.
-    static func displayName(modelNumber: String?, modelCode: UInt32?) -> String? {
+    /// Best name for the device: from the advertised product code, then the printed model number,
+    /// then the internal model code.
+    static func displayName(productCode: Int? = nil, modelNumber: String?, modelCode: UInt32?) -> String? {
+        if let code = productCode, let name = productName(code: code) { return name }
         if let number = modelNumber, let name = productName(modelNumber: number) { return name }
         if let code = modelCode { return model(code: code) }
         return nil
+    }
+
+    /// The product code a Puffco puts in its Bluetooth advertisement (the first digits printed on the
+    /// bottom, e.g. 71 for "071794"). `manufacturerData` is iOS's raw value: a 2-byte company ID, then
+    /// [version, connectability, productCode, battery…]. Version 0 broadcasts (6 bytes) carry no code.
+    /// Layout from the official app's parseBroadcastedData / parseProductCode.
+    static func productCode(fromManufacturerData data: [UInt8]) -> Int? {
+        guard data.count > 2 else { return nil }
+        let payload = Array(data.dropFirst(2))
+        if payload.count == 6 && payload[0] >> 4 == 0 { return nil }
+        guard payload.count >= 3, payload[0] == 1 || payload[0] == 2 else { return nil }
+        return Int(payload[2])
+    }
+
+    /// Product code as printed on the device: three digits, e.g. "071".
+    static func productCodeText(_ code: Int) -> String {
+        String(format: "%03d", code)
     }
 
     /// Internal model code (/p/sys/hw/mdcd) → name, from PuffcoBLE's table. Fallback only.

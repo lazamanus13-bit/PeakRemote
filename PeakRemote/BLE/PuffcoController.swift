@@ -105,6 +105,10 @@ final class PuffcoController: NSObject, ObservableObject {
         phase = .connecting
         UserDefaults.standard.set(p.identifier.uuidString, forKey: Self.lastDeviceKey)
         lastDevice = p
+        if let code = UserDefaults.standard.object(forKey: Self.productCodeKey(p.identifier)) as? Int {
+            applyProductCode(code)
+            appendLog("Product code: \(PuffcoInfo.productCodeText(code))")
+        }
         appendLog("Connecting to \(name)")
         central.connect(p, options: nil)
     }
@@ -475,7 +479,7 @@ final class PuffcoController: NSObject, ObservableObject {
                 if let b = try await readOptional(LoraxPath.modelCode, size: 4), let code = Decode.uint32(b) {
                     appendLog("Model code: \(code)")
                     status.modelCode = code
-                    status.model = PuffcoInfo.displayName(modelNumber: status.modelNumber, modelCode: code)
+                    status.model = PuffcoInfo.displayName(productCode: status.productCode, modelNumber: status.modelNumber, modelCode: code)
                 }
             }
         } catch {
@@ -792,6 +796,11 @@ final class PuffcoController: NSObject, ObservableObject {
             || services.contains(Lorax.legacyServiceUUID)
             || Self.nameKeywords.contains { lower.contains($0) }
 
+        if let raw = advertisement[CBAdvertisementDataManufacturerDataKey] as? Data,
+           let code = PuffcoInfo.productCode(fromManufacturerData: [UInt8](raw)) {
+            rememberProductCode(code, for: p.identifier)
+        }
+
         if let i = devices.firstIndex(where: { $0.id == p.identifier }) {
             devices[i].rssi = rssi
             devices[i].lastSeen = Date()
@@ -800,6 +809,24 @@ final class PuffcoController: NSObject, ObservableObject {
         } else {
             devices.append(DiscoveredDevice(peripheral: p, name: name, rssi: rssi, isLikelyPuffco: likely, lastSeen: Date()))
         }
+    }
+
+    private static func productCodeKey(_ id: UUID) -> String { "productCode.\(id.uuidString)" }
+
+    /// Keeps the advertised product code so it's known even when connecting without a fresh scan.
+    private func rememberProductCode(_ code: Int, for id: UUID) {
+        let key = Self.productCodeKey(id)
+        if UserDefaults.standard.object(forKey: key) as? Int != code {
+            UserDefaults.standard.set(code, forKey: key)
+        }
+        if peripheral?.identifier == id, status.productCode != code {
+            applyProductCode(code)
+        }
+    }
+
+    private func applyProductCode(_ code: Int) {
+        status.productCode = code
+        status.model = PuffcoInfo.displayName(productCode: code, modelNumber: status.modelNumber, modelCode: status.modelCode)
     }
 
     private func handleConnected(_ p: CBPeripheral) {
@@ -904,7 +931,7 @@ final class PuffcoController: NSObject, ObservableObject {
         case Lorax.modelNumberUUID:
             appendLog("GATT model: \([UInt8](data).hex)")
             status.modelNumber = Decode.string([UInt8](data))
-            status.model = PuffcoInfo.displayName(modelNumber: status.modelNumber, modelCode: status.modelCode)
+            status.model = PuffcoInfo.displayName(productCode: status.productCode, modelNumber: status.modelNumber, modelCode: status.modelCode)
         case Lorax.serialNumberUUID:
             if status.serial == nil { status.serial = Decode.string([UInt8](data)) }
         case Lorax.firmwareUUID:

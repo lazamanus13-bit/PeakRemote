@@ -290,5 +290,12 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(PuffcoInfo.displayName(modelNumber: "071794", modelCode: 12), "Peak Pro Onyx")
         XCTAssertEqual(PuffcoInfo.displayName(modelNumber: nil, modelCode: 12), "Peak Pro Pearl")
         XCTAssertNil(PuffcoInfo.displayName(modelNumber: nil, modelCode: 999))
+        XCTAssertEqual(PuffcoInfo.displayName(productCode: 71, modelNumber: nil, modelCode: 999), "Peak Pro Onyx")
+        // company ID, version 2, connectability, product code 71, battery
+        XCTAssertEqual(PuffcoInfo.productCode(fromManufacturerData: [0x34, 0x12, 2, 1, 71, 80, 0, 0]), 71)
+        XCTAssertEqual(PuffcoInfo.productCode(fromManufacturerData: [0x34, 0x12, 1, 0, 84]), 84)
+        XCTAssertNil(PuffcoInfo.productCode(fromManufacturerData: [0x34, 0x12, 0x00, 1, 2, 3, 4, 5]))
+        XCTAssertNil(PuffcoInfo.productCode(fromManufacturerData: [0x34, 0x12]))
+        XCTAssertEqual(PuffcoInfo.productCodeText(71), "071")
     }
 }

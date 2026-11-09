@@ -171,6 +171,8 @@ struct DeviceStatus: Equatable {
     var model: String?
     /// Model number as printed on the device (Bluetooth Model Number String), e.g. "071794".
     var modelNumber: String?
+    /// Product code from the Bluetooth advertisement: the first digits printed on the bottom (71 for "071794").
+    var productCode: Int?
     /// Internal model code from /p/sys/hw/mdcd.
     var modelCode: UInt32?
     var serial: String?

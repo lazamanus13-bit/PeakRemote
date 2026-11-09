@@ -410,7 +410,7 @@ struct DeviceView: View {
         Card("Device") {
             InfoRow(label: "Chamber", value: ChamberLabel.name(c.status.chamberRaw))
             InfoRow(label: "Model", value: c.status.model ?? "—")
-            InfoRow(label: "Model number", value: c.status.modelNumber ?? "—")
+            InfoRow(label: "Product code", value: c.status.productCode.map(PuffcoInfo.productCodeText) ?? c.status.modelNumber ?? "—")
             InfoRow(label: "Firmware", value: c.status.firmware ?? "—")
             if studioUnlocked {
                 Label("Studio unlocked", systemImage: "lock.open.fill")
