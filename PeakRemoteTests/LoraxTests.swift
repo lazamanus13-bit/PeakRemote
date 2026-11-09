@@ -280,4 +280,15 @@ final class LoraxTests: XCTestCase {
         firmware[6] = 0x22
         XCTAssertNil(PeakColor.userListSlot(in: firmware))
     }
+
+    func testModelNumberNames() {
+        XCTAssertEqual(PuffcoInfo.productName(modelNumber: "071794"), "Peak Pro Onyx")
+        XCTAssertEqual(PuffcoInfo.productName(modelNumber: "084001"), "Peak Pro Glacier")
+        XCTAssertNil(PuffcoInfo.productName(modelNumber: "999999"))
+        XCTAssertNil(PuffcoInfo.productName(modelNumber: "7"))
+        // The printed model number wins over the internal code
+        XCTAssertEqual(PuffcoInfo.displayName(modelNumber: "071794", modelCode: 12), "Peak Pro Onyx")
+        XCTAssertEqual(PuffcoInfo.displayName(modelNumber: nil, modelCode: 12), "Peak Pro Pearl")
+        XCTAssertNil(PuffcoInfo.displayName(modelNumber: nil, modelCode: 999))
+    }
 }

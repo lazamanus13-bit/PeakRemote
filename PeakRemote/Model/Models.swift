@@ -169,6 +169,10 @@ struct HeatProfile: Identifiable, Equatable {
 struct DeviceStatus: Equatable {
     var deviceName: String?
     var model: String?
+    /// Model number as printed on the device (Bluetooth Model Number String), e.g. "071794".
+    var modelNumber: String?
+    /// Internal model code from /p/sys/hw/mdcd.
+    var modelCode: UInt32?
     var serial: String?
     var firmware: String?
 

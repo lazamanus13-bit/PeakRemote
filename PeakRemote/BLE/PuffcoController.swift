@@ -474,7 +474,8 @@ final class PuffcoController: NSObject, ObservableObject {
                 }
                 if let b = try await readOptional(LoraxPath.modelCode, size: 4), let code = Decode.uint32(b) {
                     appendLog("Model code: \(code)")
-                    status.model = PuffcoInfo.model(code: code) ?? "Model code \(code)"
+                    status.modelCode = code
+                    status.model = PuffcoInfo.displayName(modelNumber: status.modelNumber, modelCode: code)
                 }
             }
         } catch {
@@ -902,7 +903,8 @@ final class PuffcoController: NSObject, ObservableObject {
             appendLog("EVENT: \([UInt8](data).hex)")
         case Lorax.modelNumberUUID:
             appendLog("GATT model: \([UInt8](data).hex)")
-            if status.model == nil { status.model = Decode.string([UInt8](data)) }
+            status.modelNumber = Decode.string([UInt8](data))
+            status.model = PuffcoInfo.displayName(modelNumber: status.modelNumber, modelCode: status.modelCode)
         case Lorax.serialNumberUUID:
             if status.serial == nil { status.serial = Decode.string([UInt8](data)) }
         case Lorax.firmwareUUID:

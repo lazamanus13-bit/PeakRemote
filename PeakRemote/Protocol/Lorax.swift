@@ -254,7 +254,47 @@ enum PuffcoInfo {
         return out
     }
 
-    /// Model code → (product family, edition name).
+    /// Product codes (the first three digits of the model number printed on the device, e.g. 071794 → 71),
+    /// from the official app's product table.
+    static func productName(code: Int) -> String? {
+        switch code {
+        case 71, 79: return "Peak Pro Onyx"
+        case 72, 80: return "Peak Pro Pearl"
+        case 74: return "Peak Pro Desert"
+        case 75: return "Peak Pro Flourish"
+        case 78: return "Peak Pro Storm"
+        case 81: return "Peak Pro Daybreak"
+        case 83: return "Peak Pro Plasma"
+        case 84: return "Peak Pro Glacier"
+        case 21: return "Peak Pro (OG)"
+        case 22: return "Peak Pro Opal"
+        case 25: return "Peak Pro Indiglow"
+        case 26: return "Peak Pro Guardian"
+        case 51: return "Peak (OG)"
+        case 10: return "Proxy Onyx"
+        case 11: return "Proxy Haze"
+        case 12: return "Proxy Onyx Core"
+        case 13: return "Proxy Pine Core"
+        case 14: return "Proxy Pine"
+        default: return nil
+        }
+    }
+
+    /// The device's name from its model number (e.g. "071794" → "Peak Pro Onyx").
+    static func productName(modelNumber: String) -> String? {
+        let digits = modelNumber.filter(\.isNumber)
+        guard digits.count >= 3, let code = Int(digits.prefix(3)) else { return nil }
+        return productName(code: code)
+    }
+
+    /// Best name for the device: from the printed model number, then the internal model code.
+    static func displayName(modelNumber: String?, modelCode: UInt32?) -> String? {
+        if let number = modelNumber, let name = productName(modelNumber: number) { return name }
+        if let code = modelCode { return model(code: code) }
+        return nil
+    }
+
+    /// Internal model code (/p/sys/hw/mdcd) → name, from PuffcoBLE's table. Fallback only.
     static func model(code: UInt32) -> String? {
         switch code {
         case 0, 21: return "Peak Pro (OG)"
