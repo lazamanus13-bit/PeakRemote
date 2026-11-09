@@ -13,6 +13,8 @@ struct DeviceView: View {
     @State private var showLanternColors = false
     @AppStorage("studioUnlocked") private var studioUnlocked = false
     @State private var showJailbreak = false
+    @AppStorage("dashboardLayout") private var tileLayoutRaw = TileLayout.default.raw
+    @State private var showArrange = false
     @Environment(\.openURL) private var openURL
     @State private var showFirmwareHelp = false
     @State private var showLog = false
@@ -46,13 +48,14 @@ struct DeviceView: View {
         VStack(spacing: 20) {
             if !ready { PhaseBanner(phase: c.phase) }
             HStack(alignment: .top, spacing: 24) {
-                VStack(spacing: 24) {
+                VStack(spacing: 20) {
                     TemperatureDial(status: c.status, celsius: useCelsius, size: 340)
                         .opacity(ready ? 1 : 0.4)
                     controls
+                    tiles(layout.left)
                 }
                 .frame(maxWidth: .infinity)
-                cardsColumn
+                tiles(layout.right)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -65,20 +68,32 @@ struct DeviceView: View {
             TemperatureDial(status: c.status, celsius: useCelsius)
                 .opacity(ready ? 1 : 0.4)
             controls
-            cardsColumn
+            tiles(layout.all)
         }
         .frame(maxWidth: 600)
     }
 
-    private var cardsColumn: some View {
+    private var layout: TileLayout { TileLayout(raw: tileLayoutRaw) }
+
+    /// A column of tiles in the user's chosen order.
+    private func tiles(_ list: [DashboardTile]) -> some View {
         VStack(spacing: 20) {
-            if studioUnlocked { studio }
-            profiles
-            readyMode
-            lights
-            stats
-            battery
-            info
+            ForEach(list) { tile in
+                tileView(tile)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tileView(_ tile: DashboardTile) -> some View {
+        switch tile {
+        case .studio: if studioUnlocked { studio }
+        case .profiles: profiles
+        case .readyMode: readyMode
+        case .lights: lights
+        case .stats: stats
+        case .battery: battery
+        case .device: info
         }
     }
 
@@ -102,6 +117,8 @@ struct DeviceView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             HStack(spacing: 14) {
                 BatteryBadge(percent: c.status.batteryPct, charging: ChargeLabel.isCharging(c.status.chargeRaw))
+                Button { showArrange = true } label: { Image(systemName: "rectangle.3.group") }
+                    .accessibilityLabel("Arrange tiles")
                 Button { showLog = true } label: { Image(systemName: "ladybug") }
                     .accessibilityLabel("Debug log")
             }
@@ -123,6 +140,9 @@ struct DeviceView: View {
     private func presentations<V: View>(_ content: V) -> some View {
         content
             .sheet(item: $editingProfile) { profile in editor(for: profile) }
+            .sheet(isPresented: $showArrange) {
+                ArrangeTilesSheet(raw: $tileLayoutRaw, twoColumns: sizeClass == .regular)
+            }
             .sheet(isPresented: $showJailbreak) {
                 JailbreakSheet { studioUnlocked = true }
             }

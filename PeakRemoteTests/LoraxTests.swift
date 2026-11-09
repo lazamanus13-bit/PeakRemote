@@ -238,4 +238,17 @@ final class LoraxTests: XCTestCase {
         }
         XCTAssertEqual(Set(MultiColorPreset.all.map(\.name)).count, MultiColorPreset.all.count)
     }
+
+    func testTileLayoutParsing() {
+        let layout = TileLayout(raw: "stats,lights|profiles")
+        XCTAssertEqual(layout.left, [.stats, .lights])
+        XCTAssertEqual(Array(layout.right.prefix(1)), [.profiles])
+        // Every tile appears exactly once, missing ones go to the right column
+        XCTAssertEqual(Set(layout.all), Set(DashboardTile.allCases))
+        XCTAssertEqual(layout.all.count, DashboardTile.allCases.count)
+        // Round trip and bad input
+        XCTAssertEqual(TileLayout(raw: layout.raw), layout)
+        XCTAssertEqual(TileLayout(raw: "garbage"), TileLayout.default)
+        XCTAssertEqual(TileLayout(raw: "stats,stats|stats").all.filter { $0 == .stats }.count, 1)
+    }
 }
