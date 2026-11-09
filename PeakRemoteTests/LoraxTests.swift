@@ -228,4 +228,14 @@ final class LoraxTests: XCTestCase {
         XCTAssertTrue(back.first?.hasLights == true)
         XCTAssertEqual(MultiColorSlot.curve, 0)
     }
+
+    func testMultiColorPresetsAreValid() {
+        XCTAssertGreaterThanOrEqual(MultiColorPreset.all.count, 8)
+        for preset in MultiColorPreset.all {
+            XCTAssertTrue((2...MultiColorLook.maxColors).contains(preset.look.colors.count), preset.name)
+            XCTAssertLessThanOrEqual(preset.look.entryCount, 32, preset.name)
+            XCTAssertEqual(preset.look.pointerBytes(slot: 1).count, 8, preset.name)
+        }
+        XCTAssertEqual(Set(MultiColorPreset.all.map(\.name)).count, MultiColorPreset.all.count)
+    }
 }

@@ -8,6 +8,7 @@ struct MultiColorEditor: View {
 
     var body: some View {
         Group {
+            presetRow
             ForEach(look.colors.indices, id: \.self) { index in
                 colorRow(index)
             }
@@ -38,6 +39,33 @@ struct MultiColorEditor: View {
                     Image(systemName: "hare")
                 }
             }
+        }
+    }
+
+    /// Tap a swatch to load a ready-made look; it stays fully editable afterwards.
+    private var presetRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(MultiColorPreset.all) { preset in
+                    Button {
+                        update(preset.look)
+                    } label: {
+                        VStack(spacing: 4) {
+                            Circle()
+                                .fill(AngularGradient(colors: preset.look.colors.map(\.color) + [preset.look.colors[0].color],
+                                                      center: .center))
+                                .frame(width: 36, height: 36)
+                                .overlay(Circle().stroke(look == preset.look ? Color.primary : Color.clear, lineWidth: 2))
+                            Text(preset.name)
+                                .font(.caption2)
+                                .foregroundStyle(look == preset.look ? Color.primary : Color.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(preset.name) preset")
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 

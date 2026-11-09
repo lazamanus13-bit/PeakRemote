@@ -133,3 +133,31 @@ extension PeakColor {
         PeakColorFormat.detect(bytes) == .api2 && bytes[3] == 1
     }
 }
+
+/// Ready-made multi-color looks (original palettes for Peak Remote).
+struct MultiColorPreset: Identifiable {
+    let name: String
+    let look: MultiColorLook
+    var id: String { name }
+
+    private static func rgb(_ hex: UInt32) -> RGB {
+        RGB(r: UInt8((hex >> 16) & 0xFF), g: UInt8((hex >> 8) & 0xFF), b: UInt8(hex & 0xFF))
+    }
+
+    private static func make(_ name: String, _ hexes: [UInt32], _ pattern: LightPattern, _ speed: Double) -> MultiColorPreset {
+        MultiColorPreset(name: name, look: MultiColorLook(colors: hexes.map(rgb), pattern: pattern, speed: speed))
+    }
+
+    static let all: [MultiColorPreset] = [
+        make("Sunset",  [0xFF5A00, 0xFF0070, 0x7A00FF],                     .wave,     0.35),
+        make("Ocean",   [0x00C8B4, 0x0040FF, 0x00A0FF],                     .wave,     0.25),
+        make("Aurora",  [0x00FF6A, 0x00B0A0, 0x8A2BFF],                     .fade,     0.3),
+        make("Ember",   [0xFF1E00, 0xFF6A00, 0xFFB000],                     .fade,     0.55),
+        make("Candy",   [0xFF4FB8, 0x5AC8FF, 0xB78CFF],                     .wave,     0.45),
+        make("Forest",  [0x0A8F2E, 0x7CFF3A, 0xFFC400],                     .gradient, 0.4),
+        make("Neon",    [0xFF00A8, 0x0066FF, 0x7CFF00],                     .wave,     0.8),
+        make("Rainbow", [0xFF0000, 0xFF8000, 0xFFE000, 0x00D000, 0x0060FF, 0x9000FF], .wave, 0.5),
+        make("Ice",     [0xFFFFFF, 0x9FE7FF, 0x2A6BFF],                     .fade,     0.2),
+        make("Lava",    [0xFF0000, 0x8A0000, 0xFF5000],                     .fade,     0.25),
+    ]
+}
