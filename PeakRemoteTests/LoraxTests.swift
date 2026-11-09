@@ -251,4 +251,19 @@ final class LoraxTests: XCTestCase {
         XCTAssertEqual(TileLayout(raw: "garbage"), TileLayout.default)
         XCTAssertEqual(TileLayout(raw: "stats,stats|stats").all.filter { $0 == .stats }.count, 1)
     }
+
+    func testDraggingTiles() {
+        let start = TileLayout(left: [.stats], right: [.profiles, .battery, .lights, .readyMode, .studio, .device])
+        // Drop Battery onto Stats: it goes into the left column, just before Stats
+        let a = start.moving(.battery, before: .stats)
+        XCTAssertEqual(a.left, [.battery, .stats])
+        XCTAssertFalse(a.right.contains(.battery))
+        // Drop Stats on the right column's drop zone: it goes to the end of that column
+        let b = a.moving(.stats, toEndOf: .right)
+        XCTAssertEqual(b.left, [.battery])
+        XCTAssertEqual(b.right.last, .stats)
+        // Dropping a tile on itself changes nothing
+        XCTAssertEqual(b.moving(.battery, before: .battery), b)
+        XCTAssertEqual(b.all.count, DashboardTile.allCases.count)
+    }
 }

@@ -14,7 +14,8 @@ struct DeviceView: View {
     @AppStorage("studioUnlocked") private var studioUnlocked = false
     @State private var showJailbreak = false
     @AppStorage("dashboardLayout") private var tileLayoutRaw = TileLayout.default.raw
-    @State private var showArrange = false
+    @State private var editingLayout = false
+    @State private var dropTarget: String?
     @Environment(\.openURL) private var openURL
     @State private var showFirmwareHelp = false
     @State private var showLog = false
@@ -47,15 +48,16 @@ struct DeviceView: View {
     private var wideLayout: some View {
         VStack(spacing: 20) {
             if !ready { PhaseBanner(phase: c.phase) }
+            if editingLayout { arrangeBanner }
             HStack(alignment: .top, spacing: 24) {
                 VStack(spacing: 20) {
                     TemperatureDial(status: c.status, celsius: useCelsius, size: 340)
                         .opacity(ready ? 1 : 0.4)
                     controls
-                    tiles(layout.left)
+                    tiles(layout.left, column: .left)
                 }
                 .frame(maxWidth: .infinity)
-                tiles(layout.right)
+                tiles(layout.right, column: .right)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -65,23 +67,83 @@ struct DeviceView: View {
     private var narrowLayout: some View {
         VStack(spacing: 20) {
             if !ready { PhaseBanner(phase: c.phase) }
+            if editingLayout { arrangeBanner }
             TemperatureDial(status: c.status, celsius: useCelsius)
                 .opacity(ready ? 1 : 0.4)
             controls
-            tiles(layout.all)
+            tiles(layout.all, column: .right)
         }
         .frame(maxWidth: 600)
     }
 
     private var layout: TileLayout { TileLayout(raw: tileLayoutRaw) }
 
-    /// A column of tiles in the user's chosen order.
-    private func tiles(_ list: [DashboardTile]) -> some View {
-        VStack(spacing: 20) {
-            ForEach(list) { tile in
-                tileView(tile)
+    /// A column of tiles in the user's chosen order. While arranging, tiles become draggable bars.
+    @ViewBuilder
+    private func tiles(_ list: [DashboardTile], column: TileColumn) -> some View {
+        if editingLayout {
+            VStack(spacing: 12) {
+                ForEach(list.filter { $0 != .studio || studioUnlocked }) { tile in
+                    arrangeable(tile)
+                }
+                columnDropZone(column)
+            }
+        } else {
+            VStack(spacing: 20) {
+                ForEach(list) { tile in
+                    tileView(tile)
+                }
             }
         }
+    }
+
+    private func arrangeable(_ tile: DashboardTile) -> some View {
+        ArrangeableTile(tile: tile, isTargeted: dropTarget == tile.rawValue)
+            .draggable(tile.rawValue) {
+                ArrangeableTile(tile: tile, isTargeted: true).frame(width: 280)
+            }
+            .dropDestination(for: String.self) { items, _ in
+                guard let moved = items.first.flatMap(DashboardTile.init(rawValue:)) else { return false }
+                saveLayout(layout.moving(moved, before: tile))
+                return true
+            } isTargeted: { over in
+                dropTarget = over ? tile.rawValue : (dropTarget == tile.rawValue ? nil : dropTarget)
+            }
+    }
+
+    private func columnDropZone(_ column: TileColumn) -> some View {
+        let key = column == .left ? "|left" : "|right"
+        return TileDropZone(isTargeted: dropTarget == key)
+            .dropDestination(for: String.self) { items, _ in
+                guard let moved = items.first.flatMap(DashboardTile.init(rawValue:)) else { return false }
+                saveLayout(layout.moving(moved, toEndOf: column))
+                return true
+            } isTargeted: { over in
+                dropTarget = over ? key : (dropTarget == key ? nil : dropTarget)
+            }
+    }
+
+    private var arrangeBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "hand.draw")
+            Text("Drag tiles to move them.")
+                .font(.subheadline)
+            Spacer()
+            Button("Reset") { saveLayout(.default) }
+                .buttonStyle(.bordered)
+            Button("Done") { withAnimation { editingLayout = false } }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+        }
+        .padding()
+        .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func saveLayout(_ next: TileLayout) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            tileLayoutRaw = next.raw
+        }
+        dropTarget = nil
     }
 
     @ViewBuilder
@@ -117,8 +179,12 @@ struct DeviceView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             HStack(spacing: 14) {
                 BatteryBadge(percent: c.status.batteryPct, charging: ChargeLabel.isCharging(c.status.chargeRaw))
-                Button { showArrange = true } label: { Image(systemName: "rectangle.3.group") }
-                    .accessibilityLabel("Arrange tiles")
+                Button {
+                    withAnimation { editingLayout.toggle() }
+                } label: {
+                    Image(systemName: editingLayout ? "checkmark.circle.fill" : "rectangle.3.group")
+                }
+                .accessibilityLabel(editingLayout ? "Done arranging" : "Arrange tiles")
                 Button { showLog = true } label: { Image(systemName: "ladybug") }
                     .accessibilityLabel("Debug log")
             }
@@ -140,9 +206,6 @@ struct DeviceView: View {
     private func presentations<V: View>(_ content: V) -> some View {
         content
             .sheet(item: $editingProfile) { profile in editor(for: profile) }
-            .sheet(isPresented: $showArrange) {
-                ArrangeTilesSheet(raw: $tileLayoutRaw, twoColumns: sizeClass == .regular)
-            }
             .sheet(isPresented: $showJailbreak) {
                 JailbreakSheet { studioUnlocked = true }
             }

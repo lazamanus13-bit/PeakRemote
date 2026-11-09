@@ -75,88 +75,83 @@ struct TileLayout: Equatable {
     var all: [DashboardTile] { left + right }
 }
 
-/// Drag tiles to reorder them; tiles above the "Right column" divider go in the left column.
-struct ArrangeTilesSheet: View {
-    @Binding var raw: String
-    let twoColumns: Bool
-    @Environment(\.dismiss) private var dismiss
+enum TileColumn {
+    case left
+    case right
+}
 
-    private enum Row: Hashable, Identifiable {
-        case tile(DashboardTile)
-        case divider
-        var id: String {
-            switch self {
-            case .tile(let t): return t.rawValue
-            case .divider: return "|divider"
-            }
+extension TileLayout {
+    /// Moves `tile` so it sits just before `target`, in whichever column `target` is in.
+    func moving(_ tile: DashboardTile, before target: DashboardTile) -> TileLayout {
+        guard tile != target else { return self }
+        var next = removing(tile)
+        if let i = next.left.firstIndex(of: target) {
+            next.left.insert(tile, at: i)
+        } else if let i = next.right.firstIndex(of: target) {
+            next.right.insert(tile, at: i)
+        } else {
+            next.right.append(tile)
         }
+        return next
     }
 
-    @State private var rows: [Row] = []
+    /// Moves `tile` to the end of `column`.
+    func moving(_ tile: DashboardTile, toEndOf column: TileColumn) -> TileLayout {
+        var next = removing(tile)
+        switch column {
+        case .left: next.left.append(tile)
+        case .right: next.right.append(tile)
+        }
+        return next
+    }
+
+    private func removing(_ tile: DashboardTile) -> TileLayout {
+        TileLayout(left: left.filter { $0 != tile }, right: right.filter { $0 != tile })
+    }
+}
+
+/// A tile while the layout is being edited: a compact bar you can drag onto another tile or a drop zone.
+struct ArrangeableTile: View {
+    let tile: DashboardTile
+    let isTargeted: Bool
 
     var body: some View {
-        NavigationView {
-            List {
-                Section {
-                    ForEach(rows) { row in
-                        rowView(row)
-                    }
-                    .onMove { from, to in
-                        rows.move(fromOffsets: from, toOffset: to)
-                        save()
-                    }
-                } header: {
-                    Text(twoColumns ? "Left column (under the dial)" : "Order")
-                } footer: {
-                    Text(twoColumns
-                         ? "Drag tiles by their handles. Tiles above the divider go in the left column, tiles below it in the right column."
-                         : "Drag tiles by their handles to change their order. On iPad, tiles above the divider go in the left column, under the temperature dial.")
-                }
-                Section {
-                    Button("Reset to default") {
-                        load(TileLayout.default)
-                        save()
-                    }
-                }
-            }
-            .environment(\.editMode, .constant(.active))
-            .navigationTitle("Arrange tiles")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
+        HStack(spacing: 12) {
+            Image(systemName: tile.icon)
+                .frame(width: 24)
+                .foregroundStyle(.orange)
+            Text(tile.name)
+                .font(.headline)
+            Spacer()
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.secondary)
         }
-        .navigationViewStyle(.stack)
-        .onAppear { load(TileLayout(raw: raw)) }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isTargeted ? Color.orange : Color.white.opacity(0.15),
+                        style: StrokeStyle(lineWidth: isTargeted ? 3 : 1, dash: isTargeted ? [] : [6, 4]))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16))
     }
+}
 
-    @ViewBuilder
-    private func rowView(_ row: Row) -> some View {
-        switch row {
-        case .tile(let tile):
-            Label(tile.name, systemImage: tile.icon)
-        case .divider:
-            HStack {
-                Image(systemName: "rectangle.split.2x1")
-                Text("Right column")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-            }
-            .foregroundStyle(.orange)
-        }
-    }
+/// The empty slot at the bottom of a column while editing.
+struct TileDropZone: View {
+    let isTargeted: Bool
 
-    private func load(_ layout: TileLayout) {
-        rows = layout.left.map(Row.tile) + [.divider] + layout.right.map(Row.tile)
-    }
-
-    private func save() {
-        guard let split = rows.firstIndex(of: .divider) else { return }
-        func tiles(_ slice: ArraySlice<Row>) -> [DashboardTile] {
-            slice.compactMap { if case .tile(let t) = $0 { return t } else { return nil } }
-        }
-        raw = TileLayout(left: tiles(rows[..<split]), right: tiles(rows[(split + 1)...])).raw
+    var body: some View {
+        Text("Drop here")
+            .font(.subheadline)
+            .foregroundStyle(isTargeted ? Color.orange : Color.secondary)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(isTargeted ? Color.orange : Color.secondary.opacity(0.5),
+                            style: StrokeStyle(lineWidth: isTargeted ? 3 : 1, dash: [6, 4]))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 16))
     }
 }
