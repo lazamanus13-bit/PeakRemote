@@ -40,6 +40,12 @@ jobs:
           grep -q "BUILD SUCCEEDED" build.log
           test -f build/Build/Products/Release-iphoneos/PeakRemote.app/PeakRemote
           test -f build/Build/Products/Release-iphoneos/PeakRemote.app/Info.plist
+          # iOS 15 has no Charts framework: it must be weak-linked or the app crashes at launch.
+          BIN=build/Build/Products/Release-iphoneos/PeakRemote.app/PeakRemote
+          otool -l "$BIN" | grep -B2 "Charts.framework" || true
+          if otool -l "$BIN" | grep -B2 "Charts.framework" | grep -q "cmd LC_LOAD_DYLIB"; then
+            echo "error: Charts is strongly linked"; exit 1
+          fi
 
       - name: Package .ipa
         run: |

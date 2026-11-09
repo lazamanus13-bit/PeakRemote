@@ -99,11 +99,8 @@ struct DeviceView: View {
 
     private func arrangeable(_ tile: DashboardTile) -> some View {
         ArrangeableTile(tile: tile, isTargeted: dropTarget == tile.rawValue)
-            .draggable(tile.rawValue) {
-                ArrangeableTile(tile: tile, isTargeted: true).frame(width: 280)
-            }
-            .dropDestination(for: String.self) { items, _ in
-                guard let moved = items.first.flatMap(DashboardTile.init(rawValue:)) else { return false }
+            .tileDrag(tile)
+            .tileDrop { moved in
                 saveLayout(layout.moving(moved, before: tile))
                 return true
             } isTargeted: { over in
@@ -114,8 +111,7 @@ struct DeviceView: View {
     private func columnDropZone(_ column: TileColumn) -> some View {
         let key = column == .left ? "|left" : "|right"
         return TileDropZone(isTargeted: dropTarget == key)
-            .dropDestination(for: String.self) { items, _ in
-                guard let moved = items.first.flatMap(DashboardTile.init(rawValue:)) else { return false }
+            .tileDrop { moved in
                 saveLayout(layout.moving(moved, toEndOf: column))
                 return true
             } isTargeted: { over in
@@ -500,7 +496,7 @@ struct TemperatureDial: View {
                 Text(Temp.format(status.tempC, celsius: celsius))
                     .font(.system(size: 64 * scale, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .contentTransition(.numericText())
+                    .rollingDigits()
                     .animation(.default, value: status.tempC)
                 if let target = status.targetC {
                     Text("Target \(Temp.format(target, celsius: celsius))")

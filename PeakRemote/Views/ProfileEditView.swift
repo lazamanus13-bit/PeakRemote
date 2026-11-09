@@ -197,7 +197,7 @@ struct ProfileEditView: View {
             }
         }
         .navigationViewStyle(.stack)
-        .presentationDetents([.medium, .large])
+        .halfSheet()
         .onDisappear { onPreview(nil) }
     }
 }
@@ -231,9 +231,7 @@ struct LogView: View {
                 } label: {
                     Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
-                ShareLink(item: c.log.joined(separator: "\n")) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
+                ShareTextButton { c.log.joined(separator: "\n") }
                 Button("Clear") { c.clearLog() }
             }
         }

@@ -148,7 +148,7 @@ struct LanternColorsSheet: View {
             }
         }
         .navigationViewStyle(.stack)
-        .presentationDetents([.medium, .large])
+        .halfSheet()
         .onAppear { onPreview(.multiColor(look)) }
         .onDisappear { onPreview(nil) }
     }

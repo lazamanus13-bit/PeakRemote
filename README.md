@@ -18,7 +18,7 @@ The protocol is ported from two MIT-licensed community projects: [puffco-py](htt
 
 ## 1. Build it
 
-You need a Mac with Xcode 15 or newer and an iPhone or iPad on iOS 16 or later. The Simulator has no Bluetooth, so you have to use a real phone.
+You need a Mac with Xcode 15 or newer and an iPhone or iPad on iOS 15 or later. The Simulator has no Bluetooth, so you have to use a real phone.
 
 ```bash
 brew install xcodegen          # one-time
@@ -48,7 +48,7 @@ First run on a new iPhone:
 2. Delete the generated `ContentView.swift` and `PeakRemoteApp.swift`.
 3. Drag the `PeakRemote/App`, `BLE`, `Model`, `Protocol` and `Views` folders into the project, and replace its `Assets.xcassets` with this one. Check "Copy items if needed."
 4. Target → Info tab: add **Privacy – Bluetooth Always Usage Description** with any text.
-5. Target → General: set Minimum Deployments to **iOS 16.0**.
+5. Target → General: set Minimum Deployments to **iOS 15.0**.
 6. Optional: add a Unit Testing Bundle target and drop in `PeakRemoteTests/LoraxTests.swift`.
 
 ## 2. First connection

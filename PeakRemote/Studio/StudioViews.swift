@@ -215,7 +215,73 @@ struct StudioCard: View {
 }
 
 /// A small line chart of a curve, with an optional "now" marker.
+/// Swift Charts on iOS 16; a hand-drawn chart on iOS 15.
 struct CurveChart: View {
+    let curve: HeatCurve
+    let elapsed: Double?
+    let celsius: Bool
+
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            SwiftChartsCurve(curve: curve, elapsed: elapsed, celsius: celsius)
+        } else {
+            DrawnCurveChart(curve: curve, elapsed: elapsed)
+        }
+    }
+}
+
+/// iOS 15 version of the curve chart, drawn with paths on the same scales.
+private struct DrawnCurveChart: View {
+    let curve: HeatCurve
+    let elapsed: Double?
+
+    private var lineColor: Color { (curve.color ?? curve.multi?.colors.first)?.color ?? .orange }
+    private var lowF: Double { HeatCurve.tempRangeF.lowerBound - 10 }
+    private var highF: Double { HeatCurve.tempRangeF.upperBound + 10 }
+
+    private func point(_ time: Double, _ tempF: Double, in size: CGSize) -> CGPoint {
+        let duration = max(curve.duration, 1)
+        let x = CGFloat(min(max(time / duration, 0), 1)) * size.width
+        let y = (1 - CGFloat(min(max((tempF - lowF) / (highF - lowF), 0), 1))) * size.height
+        return CGPoint(x: x, y: y)
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let points = curve.points.sorted { $0.time < $1.time }.map { point($0.time, $0.tempF, in: geo.size) }
+            ZStack {
+                Path { path in
+                    for i in 1...3 {
+                        let y = geo.size.height * CGFloat(i) / 4
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                    }
+                }
+                .stroke(Color.secondary.opacity(0.25), lineWidth: 0.5)
+                Path { path in
+                    guard let first = points.first else { return }
+                    path.move(to: first)
+                    points.dropFirst().forEach { path.addLine(to: $0) }
+                }
+                .stroke(lineColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                ForEach(points.indices, id: \.self) { i in
+                    Circle().fill(lineColor).frame(width: 6, height: 6).position(points[i])
+                }
+                if let elapsed {
+                    let x = point(elapsed, lowF, in: geo.size).x
+                    Path { path in
+                        path.move(to: CGPoint(x: x, y: 0))
+                        path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                    }
+                    .stroke(Color.white.opacity(0.6), lineWidth: 1)
+                }
+            }
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+private struct SwiftChartsCurve: View {
     let curve: HeatCurve
     let elapsed: Double?
     let celsius: Bool
